@@ -3,6 +3,7 @@ const WS_URL = 'ws://localhost:5353';
 
 export { HTTP_URL, WS_URL };
 
+export const MB = 1024 * 1024;
 export const STUN_SERVERS = [
 	'stun:stun1.l.google.com:19302',
 	'stun:stun2.l.google.com:19302',

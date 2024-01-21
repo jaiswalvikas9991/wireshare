@@ -45,3 +45,28 @@ export async function waitFor<T>(
 	logPassed(test);
 	return result;
 }
+
+/**
+ * Return will always be of size 5
+**/
+export const toBase256 = (base10: number) => {
+	const base = 256;
+	const ans = [];
+	while (base10 != 0) {
+		ans.push(base10 % base);
+		base10 = Math.floor(base10 / base);
+	}
+	while (ans.length < 5) ans.push(0);
+	if (ans.length > 5) throw new Error('Number if very very big');
+	return ans.reverse();
+};
+
+// TODO: Potential for improvement
+export const toBase10 = (base256: number[]) => {
+	if (base256.length > 5) throw new Error('Too Big number');
+	let ans = 0;
+	base256.reverse();
+	const base = 256;
+	for (let i = 0; i < base256.length; i++) ans += Math.pow(base, i) * base256[i];
+	return ans;
+};

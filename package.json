@@ -13,14 +13,16 @@
     "@total-typescript/ts-reset": "^0.5.1",
     "autoprefixer": "^10.4.14",
     "postcss": "^8.4.24",
+    "daisyui": "^3",
     "tailwindcss": "^3.3.2",
-    "typescript": "^5",
+    "typescript": "^5.1.6",
     "vite": "^4.1.1",
     "vite-plugin-solid": "^2.5.0",
     "vite-tsconfig-paths": "^4.2.0"
   },
   "dependencies": {
     "@solidjs/router": "^0.8.2",
+    "dexie": "^3.2.4",
     "solid-js": "^1.6.10"
   }
 }

@@ -5,7 +5,7 @@ import Machine from "$src/lib/impls/Machine";
 import WebSocketSignallingAdaptor from "$src/lib/impls/WebSocketSignallingAdaptor";
 import userIdSignal from "$src/stores/user";
 import { Component, For, Show, createSignal, onMount } from "solid-js";
-import { filesQueuedToBeSentSignal, sendingFileInfoSignal, sentFilesSignal, receivedFilesSignal} from "$src/stores/files";
+import { filesQueuedToBeSentSignal, sendingFileInfoSignal, sentFilesSignal, receivedFilesSignal, filesPausedToBeSentSignal, filesPausedToBeReceivedSignal } from "$src/stores/files";
 import ClipboardSvg from "$src/components/ClipboardSvg";
 import peerIdSignal from "$src/stores/peer";
 import CrossSvg from "$src/components/CrossSvg";
@@ -53,19 +53,21 @@ const makeLocalDb = async () => {
 
   sentFilesSignal[1](cur => {
     const newFiles = sentFiles.filter(e => e.completed).map(e => ({ filename: e.name, size: e.size }));
-    if (!cur) return newFiles;
     return [...cur, ...newFiles];
   });
 
   receivedFilesSignal[1](cur => {
     const newFiles = receivedFiles.filter((e) => e.completed).map(e => ({ filename: e.name, size: e.size }));
-    if (!cur) return newFiles;
     return [...cur, ...newFiles];
   });
 
-  filesQueuedToBeSentSignal[1](cur => {
+  filesPausedToBeSentSignal[1](cur => {
     const newFiles = sentFiles.filter(e => !e.completed).map(e => ({ file: e.file }));
-    if (!cur) return newFiles;
+    return [...cur, ...newFiles];
+  });
+
+  filesPausedToBeReceivedSignal[1](cur => {
+    const newFiles = receivedFiles.filter(e => !e.completed).map(e => ({ name: e.name, size: e.size, alreadyReceived: e.chunks.map(e => e.size).reduce((acc, e) => acc + e, 0) }));
     return [...cur, ...newFiles];
   });
 };
@@ -98,7 +100,7 @@ const UserClipboardCard = (userId: string) => {
 };
 
 const onDisconnectPeer = () => {
-  if(!globalState.machine) return panic();
+  if (!globalState.machine) return panic();
 
   globalState.machine.disconnect();
 };
@@ -279,10 +281,12 @@ const OneToOne: Component = () => {
   const [userId] = userIdSignal;
   const [loading, setLoading] = createSignal<boolean>(true);
 
-  onMount(() => {
+  onMount(async () => {
+    setLoading(true);
+
     const signallingAdaptor = new WebSocketSignallingAdaptor('global')
     globalState.machine = new Machine(signallingAdaptor);
-    makeLocalDb();
+    await makeLocalDb();
 
     setLoading(false);
   });

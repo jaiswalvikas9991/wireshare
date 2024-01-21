@@ -1,26 +1,36 @@
-type RoomId = string;
-type UserId = string;
+export type RoomId = string;
+export type UserId = string;
 
 // Sends
-type ToBeSentFile = {
+export type ToBeSentFile = {
     file: File
 };
 
-type SentFile = {
+export type PausedToBeSentFiles = {
+    file: File,
+    // alreadySent: number
+};
+
+export type SentFile = {
     filename: string,
     size: number
 }
 
 
 // Receives
-type ToBeReceivedFile = {
+export type ToBeReceivedFile = {
     name: string,
     size: number,
 };
 
-type ReceivedFile = {
+export type PausedToBeReceivedFile = {
+    name: string,
+    size: number,
+    alreadyReceived: number
+};
+
+export type ReceivedFile = {
     filename: string,
     size: number
 }
 
-export type { RoomId, UserId, ToBeSentFile, ToBeReceivedFile, SentFile, ReceivedFile };

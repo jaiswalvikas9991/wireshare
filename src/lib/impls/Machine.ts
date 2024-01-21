@@ -2,7 +2,7 @@ import { BlobReader } from "$src/BlobReader";
 import ByteArray from "$src/BytesArray";
 import { FIXED_FILE_CHUNK_SIZE, MAX_WEBRTC_MSG_SIZE } from "$src/Constants";
 import { globalState } from "$src/GlobalState";
-import { filesQueuedToBeSentSignal, receivedBytesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal } from "$src/stores/files";
+import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal } from "$src/stores/files";
 import peerIdSignal from "$src/stores/peer";
 import peerIdsSignal from "$src/stores/peers";
 import roomIdSignal from "$src/stores/room";
@@ -37,7 +37,10 @@ type ConnectingCtx = {
     type: States.CONNECTING,
     userId: UserId,
     roomId: RoomId,
-    peerId: UserId
+    peerId: UserId,
+    rtcPeerConnection: RTCPeerConnection,
+    rtcDataChannel: RTCDataChannel,
+    rtcSignallingChannel: RTCDataChannel
 };
 
 type ConnectedCtx = {
@@ -45,6 +48,9 @@ type ConnectedCtx = {
     userId: UserId,
     roomId: RoomId,
     peerId: UserId,
+    rtcPeerConnection: RTCPeerConnection,
+    rtcDataChannel: RTCDataChannel,
+    rtcSignallingChannel: RTCDataChannel
 };
 
 
@@ -58,6 +64,9 @@ type SendingCtx = {
     numberOfChunksSent: number,
     sendingFileBlob: BlobReader,
     sentDataInCurrentChunk: number,
+    rtcPeerConnection: RTCPeerConnection,
+    rtcDataChannel: RTCDataChannel,
+    rtcSignallingChannel: RTCDataChannel
 };
 
 type ReceivingCtx = {
@@ -71,6 +80,9 @@ type ReceivingCtx = {
     numberOfChunksReceived: number,
     receiveBuffer: ByteArray,
     receivedDataInCurrentChunk: number,
+    rtcPeerConnection: RTCPeerConnection,
+    rtcDataChannel: RTCDataChannel,
+    rtcSignallingChannel: RTCDataChannel
 };
 
 type MachineState = StaleCtx | ReadyCxt | ConnectedCtx | ConnectingCtx | SendingCtx | ReceivingCtx;
@@ -136,9 +148,6 @@ type SignallingSendMsg = {
 class Machine {
     private currentState: MachineState;
     private signallingAdaptor: SignallingPort;
-    private rtcPeerConnection: RTCPeerConnection;
-    private rtcDataChannel: RTCDataChannel;
-    private rtcSignallingChannel: RTCDataChannel;
     private sendingFileRef: File | null = null;
 
     constructor(signallingAdaptor: SignallingPort) {
@@ -146,26 +155,6 @@ class Machine {
 
         this.signallingAdaptor = signallingAdaptor;
         this.signallingAdaptor.onMsg(this.onSignallingMsg.bind(this));
-
-        this.rtcPeerConnection = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVERS }] });
-        this.initRTCPeerConnection();
-
-        // init data channels
-        this.rtcSignallingChannel = this.rtcPeerConnection.createDataChannel('signal', {
-            ordered: true,
-            negotiated: true,
-            id: 1
-        });
-        this.initRTCSignallingChannel(this.rtcSignallingChannel);
-
-
-        this.rtcDataChannel = this.rtcPeerConnection.createDataChannel('data', {
-            ordered: true,
-            negotiated: true,
-            id: 0
-        });
-        this.initRTCDataChannel(this.rtcDataChannel);
-
     }
 
 
@@ -180,8 +169,9 @@ class Machine {
 
 
     async onDataChannelFree(freeSpace: number) {
-        if (this.rtcPeerConnection.connectionState !== 'connected') return;
+        if (this.currentState.type === States.CONNECTED) return;
         if (this.currentState.type != States.SENDING) return flowError();
+        if (this.currentState.rtcPeerConnection.connectionState !== 'connected') return;
         const currentChunkNumber = this.currentState.numberOfChunksSent + 1;
         const totalNumberOfChunks = this.calculateNumChunks(this.currentState.sendingFile.size, this.currentState.negotiatedFileChunkSize); // This we can put on context
         if (currentChunkNumber > totalNumberOfChunks) return panic('Should be impossible');
@@ -243,19 +233,20 @@ class Machine {
             case ReceiveSignallingTypes.OFFER: {
                 if (this.currentState.type !== States.READY) return panic();
 
+                const [rtcPeerConnection, rtcSignallingChannel, rtcDataChannel] = this.initNewRTCObj();
+
                 const offer = new RTCSessionDescription(JSON.parse(msg.offer) as any);
-                await this.rtcPeerConnection.setRemoteDescription(offer);
+                await rtcPeerConnection.setRemoteDescription(offer);
 
-                await this.rtcPeerConnection.setLocalDescription(await this.rtcPeerConnection.createAnswer());
+                await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createAnswer());
 
-                if (!(await waitFor(() => this.rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
-
+                if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
                 this.sendSignal({
                     toUserId: msg.fromUserId,
                     msg: {
                         type: ReceiveSignallingTypes.ANSWER,
                         fromUserId: this.currentState.userId,
-                        answer: JSON.stringify(this.rtcPeerConnection.localDescription)
+                        answer: JSON.stringify(rtcPeerConnection.localDescription)
                     }
                 });
 
@@ -265,7 +256,10 @@ class Machine {
                     type: States.CONNECTING,
                     userId: this.currentState.userId,
                     roomId: this.currentState.roomId,
-                    peerId: msg.fromUserId
+                    peerId: msg.fromUserId,
+                    rtcPeerConnection: rtcPeerConnection,
+                    rtcSignallingChannel: rtcSignallingChannel,
+                    rtcDataChannel: rtcDataChannel
                 };
 
 
@@ -275,7 +269,7 @@ class Machine {
                 if (this.currentState.type !== States.CONNECTING) return panic();
 
                 const answer = new RTCSessionDescription(JSON.parse(msg.answer) as any);
-                await this.rtcPeerConnection.setRemoteDescription(answer);
+                await this.currentState.rtcPeerConnection.setRemoteDescription(answer);
 
 
                 break;
@@ -292,6 +286,25 @@ class Machine {
 
         channel.onbufferedamountlow = () => {
             this.onDataChannelFree(MAX_WEBRTC_MSG_SIZE);
+        };
+
+        // https://stackoverflow.com/questions/66297347/why-does-calling-rtcpeerconnection-close-not-send-closed-event
+        channel.onclose = () => {
+            if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
+            if (this.currentState.type !== States.CONNECTED) return panic();
+
+            if (!isTransitionAllowed(this.currentState.type, States.READY)) return panic();
+            const peerId = this.currentState.peerId;
+            this.currentState = { type: States.READY, userId: this.currentState.userId, roomId: this.currentState.roomId };
+            onPeerDisconnected(peerId);
+        };
+
+        channel.onopen = () => {
+            if (this.currentState.type !== States.CONNECTING) return panic();
+
+            if (!isTransitionAllowed(this.currentState.type, States.CONNECTED)) return panic();
+            this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+            onPeerConnected(this.currentState.peerId);
         };
     }
 
@@ -316,7 +329,7 @@ class Machine {
 
 
                     const currentSizeNeeded = Math.min(msg.fileSize, msg.negotiatedFileChunkSize); // May be we can replace with the method
-                    this.sendPeerSignal({ type: SignalTypes.FILE_INFO_RES, accepted: true, haveTillOffset: offset, negotiatedFileChunkSize: negotiatedFileChunkSize });
+                    this.sendPeerSignal({ type: SignalTypes.FILE_INFO_RES, accepted: true, haveTillOffset: offset, negotiatedFileChunkSize: negotiatedFileChunkSize }, this.currentState.rtcSignallingChannel);
 
 
                     const alreadyReceived = 1 + offset === msg.fileSize;
@@ -325,7 +338,7 @@ class Machine {
                         return;
                     }
 
-                    this.currentState = { type: States.RECEIVING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, receiveBuffer: new ByteArray(currentSizeNeeded), negotiatedFileChunkSize: negotiatedFileChunkSize, fileSize: msg.fileSize, receivedDataInCurrentChunk: 0, numberOfChunksReceived: 0, fileName: msg.fileName };
+                    this.currentState = { type: States.RECEIVING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, receiveBuffer: new ByteArray(currentSizeNeeded), negotiatedFileChunkSize: negotiatedFileChunkSize, fileSize: msg.fileSize, receivedDataInCurrentChunk: 0, numberOfChunksReceived: 0, fileName: msg.fileName, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
                     break;
                 }
@@ -349,7 +362,7 @@ class Machine {
                     const sendingFileBlob = new BlobReader(this.sendingFileRef, 1 + msg.haveTillOffset);
 
 
-                    this.currentState = { type: States.SENDING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, sendingFile: this.sendingFileRef, sendingFileBlob: sendingFileBlob, negotiatedFileChunkSize: msg.negotiatedFileChunkSize, sentDataInCurrentChunk: 0, numberOfChunksSent: 0 };
+                    this.currentState = { type: States.SENDING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, sendingFile: this.sendingFileRef, sendingFileBlob: sendingFileBlob, negotiatedFileChunkSize: msg.negotiatedFileChunkSize, sentDataInCurrentChunk: 0, numberOfChunksSent: 0, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
                     // Starts sending data. User responds means that it is ready for receiving data
                     this.onDataChannelFree(MAX_WEBRTC_MSG_SIZE); // This fixed for now
@@ -369,7 +382,33 @@ class Machine {
                     if (this.currentState.type != States.SENDING) return flowError();
 
                     onFileSent(this.currentState.sendingFile);
-                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId };
+                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+
+                    break;
+                }
+                case SignalTypes.PAUSE_SENDING_REQ: {
+                    if (this.currentState.type === States.CONNECTED) return;
+                    if (this.currentState.type !== States.SENDING) return flowError();
+                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+
+                    this.sendPeerSignal({ type: SignalTypes.PAUSE_SENDING_RES }, this.currentState.rtcSignallingChannel);
+
+                    break;
+                }
+                case SignalTypes.PAUSE_SENDING_RES: {
+                    if (this.currentState.type === States.CONNECTED) return;
+                    if (this.currentState.type !== States.RECEIVING) return flowError();
+
+                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+
+                    onCanPauseReceiving();
+
+                    break;
+                }
+                case SignalTypes.PAUSE_RECEIVING | SignalTypes.PAUSE_SENDING_RES: {
+                    if (this.currentState.type === States.CONNECTED) return;
+                    if (this.currentState.type !== States.RECEIVING) return flowError();
+                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
                     break;
                 }
@@ -377,50 +416,48 @@ class Machine {
 
         }
     }
-    initRTCPeerConnection() {
-        this.rtcPeerConnection.onconnectionstatechange = () => {
-            switch (this.rtcPeerConnection.connectionState) {
-                case 'connected': {
-                    if (this.currentState.type !== States.CONNECTING) return panic();
 
-                    if (!isTransitionAllowed(this.currentState.type, States.CONNECTED)) return panic();
-                    this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId };
-                    onPeerConnected(this.currentState.peerId);
+    initNewRTCObj(): [RTCPeerConnection, RTCDataChannel, RTCDataChannel] {
+        const rtcPeerConnection = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVERS }] });
 
-                    break;
-                }
-                case 'closed': {
-                }
-                case 'disconnected': {
-                    console.log('Disconnect called');
-                    if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
-                    if (this.currentState.type !== States.CONNECTED) return panic();
+        // init data channels
+        const rtcSignallingChannel = rtcPeerConnection.createDataChannel('signal', {
+            ordered: true,
+            negotiated: true,
+            id: 1
+        });
+        this.initRTCSignallingChannel(rtcSignallingChannel);
 
-                    if (!isTransitionAllowed(this.currentState.type, States.READY)) return panic();
-                    const peerId = this.currentState.peerId;
-                    this.currentState = { type: States.READY, userId: this.currentState.userId, roomId: this.currentState.roomId };
-                    onPeerDisconnected(peerId);
-                    break;
-                }
-            }
+
+        const rtcDataChannel = rtcPeerConnection.createDataChannel('data', {
+            ordered: true,
+            negotiated: true,
+            id: 0
+        });
+        this.initRTCDataChannel(rtcDataChannel);
+
+        // TOOD - Remove this
+        rtcPeerConnection.onconnectionstatechange = () => {
+            console.log('State changed ', rtcPeerConnection.connectionState);
         };
 
-
+        return [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel];
     }
 
 
     async connect(peerId: UserId) {
         if (this.currentState.type !== States.READY) return panic();
-        await this.rtcPeerConnection.setLocalDescription(await this.rtcPeerConnection.createOffer());
+        const [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel] = this.initNewRTCObj();
+        await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createOffer());
 
-        if (!(await waitFor(() => this.rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
+        if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
 
         this.sendSignal({
             toUserId: peerId,
             msg: {
                 type: ReceiveSignallingTypes.OFFER,
                 fromUserId: this.currentState.userId,
-                offer: JSON.stringify(this.rtcPeerConnection.localDescription),
+                offer: JSON.stringify(rtcPeerConnection.localDescription),
             }
         });
 
@@ -429,10 +466,26 @@ class Machine {
             type: States.CONNECTING,
             userId: this.currentState.userId,
             roomId: this.currentState.roomId,
-            peerId: peerId
+            peerId: peerId,
+            rtcPeerConnection: rtcPeerConnection,
+            rtcSignallingChannel: rtcSignallingChannel,
+            rtcDataChannel: rtcDataChannel
         };
     }
 
+    pauseReceivingFile() {
+        if (this.currentState.type === States.CONNECTED) return;
+        if (this.currentState.type !== States.RECEIVING) return flowError();
+        this.sendPeerSignal({ type: SignalTypes.PAUSE_SENDING_REQ }, this.currentState.rtcSignallingChannel);
+    }
+    pauseSendingFile() {
+        if (this.currentState.type === States.CONNECTED) return;
+        if (this.currentState.type !== States.SENDING) return flowError();
+        this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+
+        onCanPauseSending();
+        this.sendPeerSignal({ type: SignalTypes.PAUSE_RECEIVING }, this.currentState.rtcSignallingChannel);
+    }
 
     sendFile(file: File) {
         if (this.currentState.type !== States.CONNECTED) return flowError();
@@ -440,7 +493,7 @@ class Machine {
         this.sendingFileRef = file;
         console.log(file.size);
         // File chunk size according to the senders needs
-        this.sendPeerSignal({ type: SignalTypes.FILE_INFO_REQ, fileName: file.name, fileSize: file.size, negotiatedFileChunkSize: FIXED_FILE_CHUNK_SIZE, fileType: file.type });
+        this.sendPeerSignal({ type: SignalTypes.FILE_INFO_REQ, fileName: file.name, fileSize: file.size, negotiatedFileChunkSize: FIXED_FILE_CHUNK_SIZE, fileType: file.type }, this.currentState.rtcSignallingChannel);
     }
 
     disconnect() {
@@ -448,18 +501,17 @@ class Machine {
         if (this.currentState.type !== States.CONNECTED) return flowError();
 
         if (!isTransitionAllowed(this.currentState.type, States.READY)) return panic();
-        const peerId = this.currentState.peerId;
+        onPeerDisconnected(this.currentState.peerId);
+        this.currentState.rtcPeerConnection.close();
         this.currentState = { type: States.READY, userId: this.currentState.userId, roomId: this.currentState.roomId };
-        onPeerDisconnected(peerId);
-        this.rtcPeerConnection.close();
     }
 
-    private sendPeerSignal(msg: Signal) {
-        this.rtcSignallingChannel.send(JSON.stringify(msg));
+    private sendPeerSignal(msg: Signal, rtcSignallingChannel: RTCDataChannel) {
+        rtcSignallingChannel.send(JSON.stringify(msg));
     }
 
-    sendData(data: ArrayBuffer) {
-        this.rtcDataChannel.send(data);
+    sendData(data: ArrayBuffer, rtcDataChannel: RTCDataChannel) {
+        rtcDataChannel.send(data);
     }
 
 
@@ -488,9 +540,9 @@ class Machine {
             if (this.currentState.numberOfChunksReceived > numberOfChunksToBeReceived) return panic('Should be impossible');
             if (this.currentState.numberOfChunksReceived === numberOfChunksToBeReceived) {
                 await onFileReceived(this.currentState.fileName);
-                this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId };
+                this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
-                this.sendPeerSignal({ type: SignalTypes.RECEIVED_FILE_PING }); // This also means that the receiver is ready for new file
+                this.sendPeerSignal({ type: SignalTypes.RECEIVED_FILE_PING }, this.currentState.rtcSignallingChannel); // This also means that the receiver is ready for new file
             }
             else {
                 this.currentState.numberOfChunksReceived += 1;
@@ -498,7 +550,7 @@ class Machine {
                 this.currentState.receiveBuffer.inner = this.currentState.receiveBuffer.inner.subarray(0, nextToBeSentChunkSize); // TODO: Test this
                 this.currentState.receivedDataInCurrentChunk = 0;
 
-                this.sendPeerSignal({ type: SignalTypes.SEND_NEXT_CHUNK_PING });
+                this.sendPeerSignal({ type: SignalTypes.SEND_NEXT_CHUNK_PING }, this.currentState.rtcSignallingChannel);
             }
         }
     }
@@ -510,8 +562,11 @@ enum SignalTypes {
     FILE_INFO_RES,
     SEND_NEXT_CHUNK_PING,
     RECEIVED_FILE_PING,
+    PAUSE_SENDING_REQ,
+    PAUSE_SENDING_RES,
+    PAUSE_RECEIVING,
 }
-type Signal = FileInfoReq | FileInfoRes | SendNextChunkPing | ReceivedFilePing;
+type Signal = FileInfoReq | FileInfoRes | SendNextChunkPing | ReceivedFilePing | PauseSendingReq | PauseSendingRes | PauseReceiving;
 type FileInfoReq = {
     type: SignalTypes.FILE_INFO_REQ,
     fileName: string,
@@ -536,6 +591,16 @@ type ReceivedFilePing = {
     type: SignalTypes.RECEIVED_FILE_PING
 }
 
+type PauseSendingReq = {
+    type: SignalTypes.PAUSE_SENDING_REQ
+}
+
+type PauseSendingRes = {
+    type: SignalTypes.PAUSE_SENDING_RES
+}
+type PauseReceiving = {
+    type: SignalTypes.PAUSE_RECEIVING
+}
 
 
 // Below should be purely UI manupulation 
@@ -634,6 +699,29 @@ const onFileInfoResReceived = async (haveTillOffset: number, fileToBeSent: File,
     setSentBytes(Math.max(haveTillOffset - 1, 0));
 };
 
+const onCanPauseSending = () => {
+    const [sendingFileInfo, setSendingFileInfo] = sendingFileInfoSignal;
+    const [sentBytes, setSentBytes] = sentBytesSignal;
+    const [_f, setFilesPausedToBeSent] = filesPausedToBeSentSignal;
+
+    if (sendingFileInfo() === null) return;
+
+    setFilesPausedToBeSent(cur => [...cur, { file: sendingFileInfo()!.file, alreadySent: sentBytes() }]);
+    setSendingFileInfo(null);
+    setSentBytes(0);
+};
+
+const onCanPauseReceiving = () => {
+    const [receivingFileInfo, setReceivingFileInfo] = receivingFileInfoSignal;
+    const [receivedBytes, setReceivedBytes] = receivedBytesSignal;
+    const [_f, setFilesPausedToBeReceived] = filesPausedToBeReceivedSignal;
+
+    if (receivingFileInfo() === null) return;
+
+    setFilesPausedToBeReceived(cur => [...cur, { name: receivingFileInfo()!.name, size: receivingFileInfo()!.size, alreadyReceived: receivedBytes() }]);
+    setReceivingFileInfo(null);
+    setReceivedBytes(0);
+};
 
 const onMoreDataSent = (dataSize: number) => {
     // TODO: THis is not acurate

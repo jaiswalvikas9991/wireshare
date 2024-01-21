@@ -100,17 +100,17 @@ const downloadBlob = (blob: Blob, name: string) => {
   a.download = name;
   a.click();
 };
+const handleDownlaodFile = async (filename: string) => {
+  if (!globalState.localStorage) panic();
+  const chunks = await globalState.localStorage?.getAllSplitsBy(filename);
+  downloadBlob(new Blob(chunks), filename);
+};
 
 const handleDeleteSentFile = async (filename: string) => {
   if (!globalState.localStorage) panic();
   globalState.localStorage?.deleteSendingFileBy(filename);
 };
 
-const handleDownlaodFile = async (filename: string) => {
-  if (!globalState.localStorage) panic();
-  const chunks = await globalState.localStorage?.getAllSplitsBy(filename);
-  downloadBlob(new Blob(chunks), filename);
-};
 
 
 const hashCode = (s: string) => {

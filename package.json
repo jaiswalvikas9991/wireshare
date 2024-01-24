@@ -21,7 +21,6 @@
     "vite-tsconfig-paths": "^4.2.0"
   },
   "dependencies": {
-    "@solidjs/router": "^0.8.2",
     "dexie": "^3.2.4",
     "solid-js": "^1.6.10"
   }

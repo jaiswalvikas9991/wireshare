@@ -1,10 +1,10 @@
 import { BlobReader } from "$src/BlobReader";
 import ByteArray from "$src/BytesArray";
+import { triggerFileSent } from "$src/Common";
 import { FIXED_FILE_CHUNK_SIZE, MAX_WEBRTC_MSG_SIZE } from "$src/Constants";
 import { globalState } from "$src/GlobalState";
 import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivedFilesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal, sentFilesSignal } from "$src/stores/files";
 import peerIdSignal from "$src/stores/peer";
-import peerIdsSignal from "$src/stores/peers";
 import roomIdSignal from "$src/stores/room";
 import userIdSignal from "$src/stores/user";
 import { RoomId, UserId } from "../models/types";
@@ -121,15 +121,6 @@ enum ReceiveSignallingTypes {
 type ConnectedToServer = {
     type: ReceiveSignallingTypes.CONNECTED_TO_SERVER,
     userId: UserId
-    peerIds: UserId[]
-};
-type PeerConnected = {
-    type: ReceiveSignallingTypes.PEERCONNECTED,
-    userId: UserId
-};
-type PeerDiconnected = {
-    type: ReceiveSignallingTypes.PEERDISCONNECTED,
-    userId: UserId
 };
 type Offer = {
     type: ReceiveSignallingTypes.OFFER,
@@ -141,7 +132,7 @@ type Answer = {
     fromUserId: UserId
     answer: string
 };
-type ReceiveSignallingMsg = ConnectedToServer | Offer | Answer | PeerConnected | PeerDiconnected;
+type ReceiveSignallingMsg = ConnectedToServer | Offer | Answer;
 
 type SignallingSendMsg = {
     toUserId: UserId,
@@ -216,21 +207,7 @@ class Machine {
 
                 if (!isTransitionAllowed(this.currentState.type, States.READY)) return panic();
                 this.currentState = { type: States.READY, userId: msg.userId, roomId: this.signallingAdaptor.getRoomId() };
-                onMachineReady(this.currentState, msg.peerIds);
-
-                break;
-            }
-            case ReceiveSignallingTypes.PEERCONNECTED: {
-                if (this.currentState.type !== States.READY) return panic();
-
-                onPeerConnectedToRoom(msg.userId);
-
-                break;
-            }
-            case ReceiveSignallingTypes.PEERDISCONNECTED: {
-                if (this.currentState.type !== States.READY) return panic();
-
-                onPeerDisconnectedFromRoom(msg.userId);
+                onMachineReady(this.currentState);
 
                 break;
             }
@@ -386,8 +363,9 @@ class Machine {
                 case SignalTypes.RECEIVED_FILE_PING: {
                     if (this.currentState.type != States.SENDING) return flowError();
 
-                    onFileSent(this.currentState.sendingFile);
                     this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+                    // TODO: May be this should be above this
+                    onFileSent();
 
                     break;
                 }
@@ -412,13 +390,17 @@ class Machine {
 
                     break;
                 }
-                case SignalTypes.PAUSE_RECEIVING: {
+                case SignalTypes.PAUSE_RECEIVING_REQ: {
                     if (this.currentState.type === States.CONNECTED) return;
                     if (this.currentState.type !== States.RECEIVING) return flowError();
                     this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
                     onPauseReceivingReqReceived();
+                    this.sendPeerSignal({type: SignalTypes.PAUSE_RECEIVING_RES}, this.currentState.rtcSignallingChannel);
                     break;
+                }
+                case SignalTypes.PAUSE_RECEIVING_RES: {
+                    onPauseReceivingResReceived();
                 }
             }
 
@@ -491,8 +473,9 @@ class Machine {
         if (this.currentState.type !== States.SENDING) return flowError();
         this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
+        // TODO: may be this should be in onPauseReceivingResReceived
         onCanPauseSending();
-        this.sendPeerSignal({ type: SignalTypes.PAUSE_RECEIVING }, this.currentState.rtcSignallingChannel);
+        this.sendPeerSignal({ type: SignalTypes.PAUSE_RECEIVING_REQ }, this.currentState.rtcSignallingChannel);
     }
 
     sendFile(file: File) {
@@ -549,8 +532,9 @@ class Machine {
             const numberOfChunksToBeReceived = this.calculateNumChunksToBeSent(apparentFileSize, this.currentState.negotiatedFileChunkSize);
             if (this.currentState.numberOfChunksReceived > numberOfChunksToBeReceived) return panic('Should be impossible');
             if (this.currentState.numberOfChunksReceived === numberOfChunksToBeReceived) {
-                await onFileReceived(this.currentState.fileName);
                 this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+                // TODO: May be this should be above this
+                await onFileReceived();
 
                 this.sendPeerSignal({ type: SignalTypes.RECEIVED_FILE_PING }, this.currentState.rtcSignallingChannel); // This also means that the receiver is ready for new file
             }
@@ -573,9 +557,10 @@ enum SignalTypes {
     RECEIVED_FILE_PING,
     PAUSE_SENDING_REQ,
     PAUSE_SENDING_RES,
-    PAUSE_RECEIVING,
+    PAUSE_RECEIVING_REQ,
+    PAUSE_RECEIVING_RES,
 }
-type Signal = FileInfoReq | FileInfoRes | SendNextChunkPing | ReceivedFilePing | PauseSendingReq | PauseSendingRes | PauseReceiving;
+type Signal = FileInfoReq | FileInfoRes | SendNextChunkPing | ReceivedFilePing | PauseSendingReq | PauseSendingRes | PauseReceivingReq | PauseReceivingRes;
 type FileInfoReq = {
     type: SignalTypes.FILE_INFO_REQ,
     fileName: string,
@@ -607,34 +592,23 @@ type PauseSendingReq = {
 type PauseSendingRes = {
     type: SignalTypes.PAUSE_SENDING_RES
 }
-type PauseReceiving = {
-    type: SignalTypes.PAUSE_RECEIVING
+type PauseReceivingReq = {
+    type: SignalTypes.PAUSE_RECEIVING_REQ
 }
+type PauseReceivingRes = {
+    type: SignalTypes.PAUSE_RECEIVING_RES
+}
+
 
 
 // Below should be purely UI manupulation 
 // Machine LifeCycle
-const onMachineReady = (ctx: ReadyCxt, peerIds: UserId[]) => {
+const onMachineReady = (ctx: ReadyCxt) => {
     const [_u, setUserId] = userIdSignal;
     const [_r, setRoomId] = roomIdSignal;
-    const [_p, setPeerIds] = peerIdsSignal;
 
     setUserId(ctx.userId);
     setRoomId(ctx.roomId);
-    setPeerIds(peerIds);
-
-};
-
-const onPeerConnectedToRoom = (peerId: UserId) => {
-    const [_peerId, setPeerIds] = peerIdsSignal;
-
-    setPeerIds(e => [...e, peerId]);
-};
-
-const onPeerDisconnectedFromRoom = (peerId: UserId) => {
-    const [_peerIds, setPeerIds] = peerIdsSignal;
-
-    setPeerIds(cur => cur.filter(e => e !== peerId));
 };
 
 const onPeerConnected = (peerId: string) => {
@@ -752,6 +726,11 @@ const onCanPauseSending = () => {
     setSentBytes(0);
 };
 
+const onPauseReceivingResReceived = () => {
+    // TODO: Commented because this causes user to stop each and every file sent manually
+    // triggerFileSent();
+};
+
 const onPauseSendingReqReceived = () => {
     onCanPauseSending();
 };
@@ -782,7 +761,7 @@ const onMoreDataReceived = (sizeOfDataReceived: number) => {
     setReceivedBytes(e => e + sizeOfDataReceived);
 };
 
-const onFileReceived = async (_fileName: string) => {
+const onFileReceived = async () => {
     const [receivingFileInfo, setReceivingFileInfo] = receivingFileInfoSignal;
     const [_rbs, setReceivedBytes] = receivedBytesSignal;
     const [_rfs, setReceivedFiles] = receivedFilesSignal;
@@ -798,7 +777,7 @@ const onFileReceived = async (_fileName: string) => {
     setReceivedBytes(0);
 };
 
-const onFileSent = (_file: File) => {
+const onFileSent = () => {
     const [sendingFileInfo, setSendingFileInfo] = sendingFileInfoSignal;
     const [_sentBytes, setSentBytes] = sentBytesSignal;
     const [_sentFiles, setSentFiles] = sentFilesSignal;
@@ -811,6 +790,8 @@ const onFileSent = (_file: File) => {
 
     setSendingFileInfo(null);
     setSentBytes(0);
+
+    triggerFileSent();
 };
 
 

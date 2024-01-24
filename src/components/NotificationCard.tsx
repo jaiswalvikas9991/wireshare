@@ -46,6 +46,10 @@ const NotificationCard: Component = () => {
     setFilesQueuedToBeSent(cur => cur.filter(e => e.file.name !== fileName));
   };
 
+  const onFileRetriggerFromToBeSentQueue = () => {
+    triggerFileSent();
+  };
+
   const onSentFileDelete = (filename: string) => {
     if (globalState.localStorage === null) return;
     globalState.localStorage.deleteSendingFileBy(filename);
@@ -133,6 +137,7 @@ const NotificationCard: Component = () => {
               <FilesQueuedToBeSentCards
                 filesQueuedToBeSent={filesQueuedToBeSent()}
                 onDelete={onFileDeleteFromToBeSentQueue}
+                onRetrigger={onFileRetriggerFromToBeSentQueue}
               />
             </Show>
 
@@ -156,16 +161,15 @@ const NotificationCard: Component = () => {
               <ReceivingFileInfoCard receivingFileInfo={receivingFileInfo()!} onPause={onReceivingFilePause} receivedBytes={receivedBytes()} />
             </Show>
 
+            <Show when={receivedFiles().length > 0}>
+              <ReceivedFilesCard receivedFiles={receivedFiles()} onSave={handleDownlaodFile} onDelete={onReceivedFileDelete} />
+            </Show>
+
+            <Show when={filesPausedToBeReceived().length > 0}>
+              <FilePausedToBeReceivedCard files={filesPausedToBeReceived()} onDelete={onFilesPausedToBeReceivedDelete} />
+            </Show>
+
           </ul>
-        </Show>
-
-        <Show when={receivedFiles().length > 0}>
-          <ReceivedFilesCard receivedFiles={receivedFiles()} onSave={handleDownlaodFile} onDelete={onReceivedFileDelete} />
-        </Show>
-
-
-        <Show when={filesPausedToBeReceived().length > 0}>
-          <FilePausedToBeReceivedCard files={filesPausedToBeReceived()} onDelete={onFilesPausedToBeReceivedDelete} />
         </Show>
       </Show>
     </>

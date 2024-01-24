@@ -1,10 +1,8 @@
 class ByteArray {
   inner: Uint8Array;
-  size: number;
 
   constructor(size: number) {
-    this.size = size;
-    this.inner = new Uint8Array(this.size);
+    this.inner = new Uint8Array(size);
   }
 
   set(data: Uint8Array, offset: number) {

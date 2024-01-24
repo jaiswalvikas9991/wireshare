@@ -25,7 +25,7 @@ const Navbar: Component = () => {
         </span>
       </div>
       <div class="navbar-end">
-        < label for="notification-label" class="btn btn-ghost btn-circle">
+        <label for="notification-label" class="btn btn-ghost btn-circle">
           <div class="indicator">
             <BellSvg />
             <Show when={sendingFileInfo() || receivingFileInfo()}>
@@ -35,13 +35,16 @@ const Navbar: Component = () => {
         </label>
 
         <input type="checkbox" id="notification-label" class="modal-toggle" />
-        <label for="notification-label" class="modal cursor-pointer">
-          <label class="modal-box relative p-2" for="">
+        <div class="modal" role="dialog">
+          <div class="modal-box p-2">
             <NotificationCard />
-          </label>
-        </label>
+          </div>
+          <label class="modal-backdrop" for="notification-label">Close</label>
+        </div>
+
+
       </div>
-    </div>
+    </div >
   );
 };
 

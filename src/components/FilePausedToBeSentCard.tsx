@@ -1,15 +1,17 @@
 import { PausedToBeSentFiles } from "$src/lib/models/types";
 import { Component, For } from "solid-js";
 import TrashSvg from "./TrashSvg";
+import ReloadSvg from "./ReloadSvg";
 
 type FilePausedToBeSentCardProps = {
   files: PausedToBeSentFiles[],
-  onDelete: (filename: string) => unknown
+  onDelete: (filename: string) => unknown,
+  onRequeued: (filename: string) => unknown
 }
 const FilePausedToBeSentCard: Component<FilePausedToBeSentCardProps> = (props) => {
   return (
     <>
-      <div class="divider flex-1">Paused</div>
+      <div class="divider flex-1">Incomplete</div>
       <For each={props.files}>
         {(file, _idx) =>
           <div class="card flex-1">
@@ -21,6 +23,12 @@ const FilePausedToBeSentCard: Component<FilePausedToBeSentCardProps> = (props) =
                   onclick={() => props.onDelete(file.file.name)}
                 >
                   <TrashSvg />
+                </span>
+                <span
+                  class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent"
+                  onclick={() => props.onRequeued(file.file.name)}
+                >
+                  <ReloadSvg />
                 </span>
               </li>
             </div>

@@ -9,6 +9,7 @@ import FilePausedToBeSentCard from "./FilePausedToBeSentCard";
 import ReceivingFileInfoCard from "./ReceivingFileInfoCard";
 import ReceivedFilesCard from "./ReceivedFilesCard";
 import FilePausedToBeReceivedCard from "./FilePausedToBeReceivedCard";
+import { triggerFileSent } from "$src/Common";
 
 const NotificationCard: Component = () => {
   const [activeTab, setActiveTab] = createSignal<number>(0);
@@ -51,7 +52,6 @@ const NotificationCard: Component = () => {
     setSentFiles(cur => cur.filter(e => e.filename !== filename));
   };
 
-
   const onFilesPausedToBeReceivedDelete = (filename: string) => {
     if (globalState.localStorage === null) return;
     globalState.localStorage.deleteReceivingFileBy(filename);
@@ -65,6 +65,17 @@ const NotificationCard: Component = () => {
     setFilesPausedToBeSent(cur => cur.filter(e => e.file.name !== filename));
   };
 
+  const onFilesPausedToBeSentRequeued = (filename: string) => {
+    const [filesPausedToBeSent, setFilesPausedToBeSent] = filesPausedToBeSentSignal;
+    const [_f, setFilesQueuedToBeSent] = filesQueuedToBeSentSignal;
+
+    const file = filesPausedToBeSent().find(e => e.file.name === filename);
+    if (!file) return panic();
+    setFilesPausedToBeSent(cur => cur.filter(e => e.file.name !== file.file.name));
+    setFilesQueuedToBeSent(cur => [...cur, { file: file.file }]);
+
+    triggerFileSent();
+  };
 
   const onReceivingFilePause = () => {
     if (globalState.machine === null) return panic();
@@ -130,7 +141,7 @@ const NotificationCard: Component = () => {
             </Show>
 
             <Show when={filesPausedToBeSent().length > 0}>
-              <FilePausedToBeSentCard files={filesPausedToBeSent()!} onDelete={onFilesPausedToBeSentDelete} />
+              <FilePausedToBeSentCard files={filesPausedToBeSent()!} onDelete={onFilesPausedToBeSentDelete} onRequeued={onFilesPausedToBeSentRequeued} />
             </Show>
           </ul>
         </Show>

@@ -2,7 +2,7 @@ import { BlobReader } from "$src/BlobReader";
 import ByteArray from "$src/BytesArray";
 import { FIXED_FILE_CHUNK_SIZE, MAX_WEBRTC_MSG_SIZE } from "$src/Constants";
 import { globalState } from "$src/GlobalState";
-import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal } from "$src/stores/files";
+import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivedFilesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal, sentFilesSignal } from "$src/stores/files";
 import peerIdSignal from "$src/stores/peer";
 import peerIdsSignal from "$src/stores/peers";
 import roomIdSignal from "$src/stores/room";
@@ -55,7 +55,7 @@ type ConnectedCtx = {
 
 
 type SendingCtx = {
-    type: States.SENDING
+    type: States.SENDING,
     userId: UserId,
     roomId: RoomId,
     peerId: UserId,
@@ -66,11 +66,12 @@ type SendingCtx = {
     sentDataInCurrentChunk: number,
     rtcPeerConnection: RTCPeerConnection,
     rtcDataChannel: RTCDataChannel,
-    rtcSignallingChannel: RTCDataChannel
+    rtcSignallingChannel: RTCDataChannel,
+    startedSendFrom: number,
 };
 
 type ReceivingCtx = {
-    type: States.RECEIVING
+    type: States.RECEIVING,
     userId: UserId,
     roomId: RoomId,
     peerId: UserId,
@@ -82,7 +83,9 @@ type ReceivingCtx = {
     receivedDataInCurrentChunk: number,
     rtcPeerConnection: RTCPeerConnection,
     rtcDataChannel: RTCDataChannel,
-    rtcSignallingChannel: RTCDataChannel
+    rtcSignallingChannel: RTCDataChannel,
+    firstOffset: number,
+    startedReceivingFrom: number,
 };
 
 type MachineState = StaleCtx | ReadyCxt | ConnectedCtx | ConnectingCtx | SendingCtx | ReceivingCtx;
@@ -159,12 +162,13 @@ class Machine {
 
 
     // TODO: May be can be improved
-    calculateNumChunks(fileSize: number, chunkSize: number) {
-        return Math.ceil(fileSize / chunkSize);
+    calculateNumChunksToBeSent(apparentFileSize: number, negotiatedFileChunkSize: number) {
+        return Math.ceil(apparentFileSize / negotiatedFileChunkSize);
     }
 
-    calculateChunkSize(chunkNumber: number, totalNumberOfChunks: number, chunkSize: number, fileSize: number) {
-        return chunkNumber < totalNumberOfChunks ? Math.min(fileSize, chunkSize) : fileSize - chunkSize * (totalNumberOfChunks - 1);
+    calculateChunkSizeFor(chunkNumber: number, totalNumberOfChunks: number, negotiatedFileChunkSize: number, apparentFileSize: number) {
+        if (chunkNumber > totalNumberOfChunks) return panic();
+        return chunkNumber < totalNumberOfChunks ? Math.min(apparentFileSize, negotiatedFileChunkSize) : apparentFileSize - negotiatedFileChunkSize * (totalNumberOfChunks - 1);
     }
 
 
@@ -173,10 +177,11 @@ class Machine {
         if (this.currentState.type != States.SENDING) return flowError();
         if (this.currentState.rtcPeerConnection.connectionState !== 'connected') return;
         const currentChunkNumber = this.currentState.numberOfChunksSent + 1;
-        const totalNumberOfChunks = this.calculateNumChunks(this.currentState.sendingFile.size, this.currentState.negotiatedFileChunkSize); // This we can put on context
+        const apparentFileSize = this.currentState.sendingFile.size - this.currentState.startedSendFrom;
+        const totalNumberOfChunks = this.calculateNumChunksToBeSent(apparentFileSize, this.currentState.negotiatedFileChunkSize); // This we can put on context
         if (currentChunkNumber > totalNumberOfChunks) return panic('Should be impossible');
 
-        const sizeOfCurrentChunk = this.calculateChunkSize(currentChunkNumber, totalNumberOfChunks, this.currentState.negotiatedFileChunkSize, this.currentState.sendingFile.size);
+        const sizeOfCurrentChunk = this.calculateChunkSizeFor(currentChunkNumber, totalNumberOfChunks, this.currentState.negotiatedFileChunkSize, apparentFileSize);
         if (this.currentState.sentDataInCurrentChunk > sizeOfCurrentChunk) {
             return panic('Should be impossible');
         }
@@ -187,7 +192,7 @@ class Machine {
 
 
         const data = await this.currentState.sendingFileBlob.read(freeSpace);
-        this.sendData(data);
+        this.sendData(data, this.currentState.rtcDataChannel);
         const actualDataSize = data.byteLength - BlobReader.indexSize;
         this.currentState.sentDataInCurrentChunk += actualDataSize; // Need to abstract this better
 
@@ -233,7 +238,7 @@ class Machine {
             case ReceiveSignallingTypes.OFFER: {
                 if (this.currentState.type !== States.READY) return panic();
 
-                const [rtcPeerConnection, rtcSignallingChannel, rtcDataChannel] = this.initNewRTCObj();
+                const [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel] = this.initNewRTCObj();
 
                 const offer = new RTCSessionDescription(JSON.parse(msg.offer) as any);
                 await rtcPeerConnection.setRemoteDescription(offer);
@@ -291,7 +296,7 @@ class Machine {
         // https://stackoverflow.com/questions/66297347/why-does-calling-rtcpeerconnection-close-not-send-closed-event
         channel.onclose = () => {
             if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
-            if (this.currentState.type !== States.CONNECTED) return panic();
+            if (this.currentState.type !== States.CONNECTED && this.currentState.type !== States.SENDING && this.currentState.type !== States.RECEIVING) return panic();
 
             if (!isTransitionAllowed(this.currentState.type, States.READY)) return panic();
             const peerId = this.currentState.peerId;
@@ -321,8 +326,13 @@ class Machine {
             switch (msg.type) {
                 case SignalTypes.FILE_INFO_REQ: {
                     if (this.currentState.type != States.CONNECTED) return flowError();
-                    //TODO: We have to look up offset here from local database eventually
-                    const offset = await onFileInfoReqReceived(msg.fileName, msg.fileSize, msg.fileType);
+                    const offset = await getOffsetForFile(msg.fileName, msg.fileSize, msg.fileType);
+                    const alreadyReceived = 1 + offset === msg.fileSize;
+                    if (alreadyReceived) {
+                        onFileAlreayReceived(msg.fileName, msg.fileSize);
+                        return;
+                    }
+                    onWillBeReceivingFile(msg.fileName, msg.fileSize, msg.fileType, 1 + offset);
                     if (!isTransitionAllowed(this.currentState.type, States.RECEIVING)) return flowError();
 
                     const negotiatedFileChunkSize = Math.min(FIXED_FILE_CHUNK_SIZE, msg.negotiatedFileChunkSize); // File Chunk size accordin to receiver needs
@@ -332,13 +342,8 @@ class Machine {
                     this.sendPeerSignal({ type: SignalTypes.FILE_INFO_RES, accepted: true, haveTillOffset: offset, negotiatedFileChunkSize: negotiatedFileChunkSize }, this.currentState.rtcSignallingChannel);
 
 
-                    const alreadyReceived = 1 + offset === msg.fileSize;
-                    if (alreadyReceived) {
-                        console.log('File was already received');
-                        return;
-                    }
 
-                    this.currentState = { type: States.RECEIVING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, receiveBuffer: new ByteArray(currentSizeNeeded), negotiatedFileChunkSize: negotiatedFileChunkSize, fileSize: msg.fileSize, receivedDataInCurrentChunk: 0, numberOfChunksReceived: 0, fileName: msg.fileName, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+                    this.currentState = { type: States.RECEIVING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, receiveBuffer: new ByteArray(currentSizeNeeded), negotiatedFileChunkSize: negotiatedFileChunkSize, fileSize: msg.fileSize, receivedDataInCurrentChunk: 0, numberOfChunksReceived: 0, fileName: msg.fileName, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel, firstOffset: 1 + offset, startedReceivingFrom: 1 + offset };
 
                     break;
                 }
@@ -356,13 +361,13 @@ class Machine {
                     // Can start the sending
                     await onFileInfoResReceived(msg.haveTillOffset, this.sendingFileRef, alreadySent);
                     if (alreadySent) {
-                        console.log('File was already sent');
+                        onFileAlreadySent(this.sendingFileRef.name, this.sendingFileRef.size);
                         return;
                     }
                     const sendingFileBlob = new BlobReader(this.sendingFileRef, 1 + msg.haveTillOffset);
 
 
-                    this.currentState = { type: States.SENDING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, sendingFile: this.sendingFileRef, sendingFileBlob: sendingFileBlob, negotiatedFileChunkSize: msg.negotiatedFileChunkSize, sentDataInCurrentChunk: 0, numberOfChunksSent: 0, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
+                    this.currentState = { type: States.SENDING, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, sendingFile: this.sendingFileRef, sendingFileBlob: sendingFileBlob, negotiatedFileChunkSize: msg.negotiatedFileChunkSize, sentDataInCurrentChunk: 0, numberOfChunksSent: 0, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel, startedSendFrom: 1 + msg.haveTillOffset };
 
                     // Starts sending data. User responds means that it is ready for receiving data
                     this.onDataChannelFree(MAX_WEBRTC_MSG_SIZE); // This fixed for now
@@ -393,6 +398,8 @@ class Machine {
 
                     this.sendPeerSignal({ type: SignalTypes.PAUSE_SENDING_RES }, this.currentState.rtcSignallingChannel);
 
+                    onPauseSendingReqReceived();
+
                     break;
                 }
                 case SignalTypes.PAUSE_SENDING_RES: {
@@ -405,11 +412,12 @@ class Machine {
 
                     break;
                 }
-                case SignalTypes.PAUSE_RECEIVING | SignalTypes.PAUSE_SENDING_RES: {
+                case SignalTypes.PAUSE_RECEIVING: {
                     if (this.currentState.type === States.CONNECTED) return;
                     if (this.currentState.type !== States.RECEIVING) return flowError();
                     this.currentState = { type: States.CONNECTED, userId: this.currentState.userId, roomId: this.currentState.roomId, peerId: this.currentState.peerId, rtcPeerConnection: this.currentState.rtcPeerConnection, rtcSignallingChannel: this.currentState.rtcSignallingChannel, rtcDataChannel: this.currentState.rtcDataChannel };
 
+                    onPauseReceivingReqReceived();
                     break;
                 }
             }
@@ -437,9 +445,9 @@ class Machine {
         this.initRTCDataChannel(rtcDataChannel);
 
         // TOOD - Remove this
-        rtcPeerConnection.onconnectionstatechange = () => {
-            console.log('State changed ', rtcPeerConnection.connectionState);
-        };
+        // rtcPeerConnection.onconnectionstatechange = () => {
+        //     console.log('State changed ', rtcPeerConnection.connectionState);
+        // };
 
         return [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel];
     }
@@ -491,7 +499,6 @@ class Machine {
         if (this.currentState.type !== States.CONNECTED) return flowError();
 
         this.sendingFileRef = file;
-        console.log(file.size);
         // File chunk size according to the senders needs
         this.sendPeerSignal({ type: SignalTypes.FILE_INFO_REQ, fileName: file.name, fileSize: file.size, negotiatedFileChunkSize: FIXED_FILE_CHUNK_SIZE, fileType: file.type }, this.currentState.rtcSignallingChannel);
     }
@@ -516,6 +523,7 @@ class Machine {
 
 
     async onDataReceived(data: ArrayBuffer) {
+        if (this.currentState.type === States.CONNECTED) return;
         if (this.currentState.type != States.RECEIVING) return flowError();
 
         const dataAndOffset = new Uint8Array(data);
@@ -523,20 +531,22 @@ class Machine {
         // const offset = toBase10([
         //     ...dataAndOffset.subarray(dataAndOffset.length - 5, dataAndOffset.length)
         // ]);
-        const offset = toBase10([dataAndOffset[size - 5], dataAndOffset[size - 4], dataAndOffset[size - 3], dataAndOffset[size - 2], dataAndOffset[size - 1]]);
+        const offsetInFile = toBase10([dataAndOffset[size - 5], dataAndOffset[size - 4], dataAndOffset[size - 3], dataAndOffset[size - 2], dataAndOffset[size - 1]]);
         const fileData = dataAndOffset.subarray(0, dataAndOffset.length - 5);
 
-        this.currentState.receiveBuffer.set(fileData, offset);
+        this.currentState.receiveBuffer.set(fileData, offsetInFile - this.currentState.firstOffset);
 
         this.currentState.receivedDataInCurrentChunk += fileData.byteLength;
         onMoreDataReceived(fileData.byteLength);
-        // These conditions assuem that the receiveBuffer size is exactly equal to the amount of data it expects
-        if (this.currentState.receivedDataInCurrentChunk > this.currentState.receiveBuffer.size) return panic('This should be impossible');
-        if (this.currentState.receivedDataInCurrentChunk === this.currentState.receiveBuffer.size) {
+        // These conditions assumes that the receiveBuffer size is exactly equal to the amount of data it expects
+        if (this.currentState.receivedDataInCurrentChunk > this.currentState.receiveBuffer.inner.byteLength) return panic('This should be impossible');
+        const apparentFileSize = this.currentState.fileSize - this.currentState.startedReceivingFrom;
+        if (this.currentState.receivedDataInCurrentChunk === this.currentState.receiveBuffer.inner.byteLength) {
             this.currentState.numberOfChunksReceived += 1;
-            onChunkReceived(this.currentState.receiveBuffer, this.currentState.numberOfChunksReceived, this.currentState.fileName);
+            this.currentState.firstOffset += this.currentState.receiveBuffer.inner.byteLength;
+            await onChunkReceived(this.currentState.receiveBuffer, this.currentState.numberOfChunksReceived, this.currentState.fileName);
 
-            const numberOfChunksToBeReceived = this.calculateNumChunks(this.currentState.fileSize, this.currentState.negotiatedFileChunkSize);
+            const numberOfChunksToBeReceived = this.calculateNumChunksToBeSent(apparentFileSize, this.currentState.negotiatedFileChunkSize);
             if (this.currentState.numberOfChunksReceived > numberOfChunksToBeReceived) return panic('Should be impossible');
             if (this.currentState.numberOfChunksReceived === numberOfChunksToBeReceived) {
                 await onFileReceived(this.currentState.fileName);
@@ -545,8 +555,7 @@ class Machine {
                 this.sendPeerSignal({ type: SignalTypes.RECEIVED_FILE_PING }, this.currentState.rtcSignallingChannel); // This also means that the receiver is ready for new file
             }
             else {
-                this.currentState.numberOfChunksReceived += 1;
-                const nextToBeSentChunkSize = this.calculateChunkSize(this.currentState.numberOfChunksReceived + 1, numberOfChunksToBeReceived, this.currentState.fileSize, this.currentState.negotiatedFileChunkSize);
+                const nextToBeSentChunkSize = this.calculateChunkSizeFor(this.currentState.numberOfChunksReceived + 1, numberOfChunksToBeReceived, this.currentState.negotiatedFileChunkSize, apparentFileSize);
                 this.currentState.receiveBuffer.inner = this.currentState.receiveBuffer.inner.subarray(0, nextToBeSentChunkSize); // TODO: Test this
                 this.currentState.receivedDataInCurrentChunk = 0;
 
@@ -629,52 +638,84 @@ const onPeerDisconnectedFromRoom = (peerId: UserId) => {
 };
 
 const onPeerConnected = (peerId: string) => {
-    console.log(`${peerId} connected`);
     const [_peerId, setPeerId] = peerIdSignal;
     setPeerId(peerId);
 };
 const onPeerDisconnected = (peerId: string) => {
-    console.log(`${peerId} disconnected`);
+    const [sendingFileInfo, setSendingFileInfo] = sendingFileInfoSignal;
+    const [_sb, setSentBytes] = sentBytesSignal;
+
+    const [receivingFileInfo, setReceivingFileInfo] = receivingFileInfoSignal;;
+    const [receivedBytes, setReceivedBytes] = receivedBytesSignal;
+
+    const [_s, setFilesPausedToBeSent] = filesPausedToBeSentSignal;
+    const [_r, setFilesPausedToBeReceived] = filesPausedToBeReceivedSignal;
+
+    const sendingFile = sendingFileInfo();
+    if (sendingFile !== null) {
+        setFilesPausedToBeSent(cur => [{ file: sendingFile.file }, ...cur]);
+        setSendingFileInfo(null);
+        setSentBytes(0);
+    }
+
+    const receivingFile = receivingFileInfo();
+    if (receivingFile !== null) {
+        setFilesPausedToBeReceived(cur => [{ name: receivingFile.name, size: receivingFile.size, alreadyReceived: receivedBytes() }, ...cur]);
+        setReceivingFileInfo(null);
+        setReceivedBytes(0);
+    }
+
     const [_peerId, setPeerId] = peerIdSignal;
     setPeerId(null);
 };
 
-const onFileInfoReqReceived = async (name: string, size: number, type: string): Promise<number> => {
+const getOffsetForFile = async (name: string, size: number, type: string): Promise<number> => {
     if (!globalState.localStorage) return panic();
-    const [_rf, setReceivingFileInfo] = receivingFileInfoSignal;
-    const [_rb, setReceivedBytes] = receivedBytesSignal;
 
-    let alreadyRecived = 0;
     const doesExists = await globalState.localStorage.doesReceivedFileExists(name);
     if (doesExists) {
         const prevFile = await globalState.localStorage.getReceivedFileInfoBy(name);
         let totalSize = 0;
         for (const e of prevFile.chunks) totalSize += e.size;
 
-        alreadyRecived = totalSize - 1;
+        return totalSize - 1;
     }
-    else {
-        await globalState.localStorage.insertReceivedFile({
-            name: name,
-            size: size,
-            type: type,
-            completed: false,
-            whenCompleted: Date.now(),
-            chunks: []
-        });
+    await globalState.localStorage.insertReceivedFile({
+        name: name,
+        size: size,
+        type: type,
+        completed: false,
+        whenCompleted: Date.now(),
+        chunks: []
+    });
 
+    return -1;
+};
+const onWillBeReceivingFile = (name: string, size: number, _type: string, alreadyRecived: number) => {
+    const [_rf, setReceivingFileInfo] = receivingFileInfoSignal;
+    const [_rb, setReceivedBytes] = receivedBytesSignal;
+    const [_rc, setReceivedFiles] = receivedFilesSignal;
+    const [_rd, setFilesPausedToBeReceived] = filesPausedToBeReceivedSignal;
 
-        alreadyRecived = 0;
-    }
     setReceivedBytes(alreadyRecived);
     setReceivingFileInfo({
         name: name,
         size: size,
     });
 
-    return alreadyRecived == 0 ? -1 : alreadyRecived;
+    setReceivedFiles(cur => cur.filter(e => e.filename !== name));
+    setFilesPausedToBeReceived(cur => cur.filter(e => e.name !== name));
 };
 
+const onFileAlreayReceived = (filename: string, size: number) => {
+    const [_rc, setReceivedFiles] = receivedFilesSignal;
+    setReceivedFiles(cur => [{ filename: filename, size: size }, ...cur.filter(e => e.filename !== filename)]);
+};
+
+const onFileAlreadySent = (filename: string, size: number) => {
+    const [_s, setsentFiles] = sentFilesSignal;
+    setsentFiles(cur => [{ filename: filename, size: size }, ...cur.filter(e => e.filename !== filename)]);
+};
 const onFileInfoResReceived = async (haveTillOffset: number, fileToBeSent: File, alreadySent: boolean) => {
     if (!globalState.localStorage) return panic();
     const [_sfi, setSendingFileInfo] = sendingFileInfoSignal;
@@ -711,6 +752,13 @@ const onCanPauseSending = () => {
     setSentBytes(0);
 };
 
+const onPauseSendingReqReceived = () => {
+    onCanPauseSending();
+};
+
+const onPauseReceivingReqReceived = () => {
+    onCanPauseReceiving();
+};
 const onCanPauseReceiving = () => {
     const [receivingFileInfo, setReceivingFileInfo] = receivingFileInfoSignal;
     const [receivedBytes, setReceivedBytes] = receivedBytesSignal;
@@ -734,18 +782,41 @@ const onMoreDataReceived = (sizeOfDataReceived: number) => {
     setReceivedBytes(e => e + sizeOfDataReceived);
 };
 
-const onFileReceived = async (fileName: string) => {
-    console.log('File was received');
+const onFileReceived = async (_fileName: string) => {
+    const [receivingFileInfo, setReceivingFileInfo] = receivingFileInfoSignal;
+    const [_rbs, setReceivedBytes] = receivedBytesSignal;
+    const [_rfs, setReceivedFiles] = receivedFilesSignal;
+
+    const info = receivingFileInfo();
+    if (info === null) return;
+
+    await globalState.localStorage?.markReceivedFileCompleted(info.name);
+
+    setReceivedFiles(cur => [{ filename: info.name, size: info.size }, ...cur]);
+
+    setReceivingFileInfo(null);
+    setReceivedBytes(0);
 };
 
-const onFileSent = (file: File) => {
-    console.log('File was sent completely');
+const onFileSent = (_file: File) => {
+    const [sendingFileInfo, setSendingFileInfo] = sendingFileInfoSignal;
+    const [_sentBytes, setSentBytes] = sentBytesSignal;
+    const [_sentFiles, setSentFiles] = sentFilesSignal;
+
+    const info = sendingFileInfo();
+    if (info === null) return;
+
+    globalState.localStorage?.markSentFileCompleted(info.file.name);
+    setSentFiles(cur => [{ filename: info.file.name, size: info.file.size }, ...cur]);
+
+    setSendingFileInfo(null);
+    setSentBytes(0);
 };
 
 
-const onChunkReceived = (chunk: ByteArray, chunkNumber: number, fileName: string) => {
+const onChunkReceived = async (chunk: ByteArray, chunkNumber: number, fileName: string) => {
     if (!globalState.localStorage) return panic();
-    globalState.localStorage.addSplitToReceivedFileInfo(fileName, chunk.getBlob());
+    await globalState.localStorage.addSplitToReceivedFileInfo(fileName, chunk.getBlob());
 };
 
 

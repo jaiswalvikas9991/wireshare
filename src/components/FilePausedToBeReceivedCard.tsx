@@ -9,7 +9,7 @@ type FilePausedToBeReceivedCardProps = {
 const FilePausedToBeReceivedCard: Component<FilePausedToBeReceivedCardProps> = (props) => {
   return (
     <>
-      <div class="divider flex-1">Paused</div>
+      <div class="divider flex-1">Incomplete</div>
       <For each={props.files}>
         {(file, _idx) =>
           <div class="card flex-1">

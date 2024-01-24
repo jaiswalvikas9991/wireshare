@@ -15,10 +15,10 @@ import { ToBeSentFile } from "$src/lib/models/types";
 import { panic } from "$src/lib/utils/Error";
 import ErrorPopup from "$src/components/ErrorPopup";
 import Navbar from "$src/components/Navbar";
+import { triggerFileSent } from "$src/Common";
 
 
 const handleConnect = (peerId: string) => {
-  console.log('Will try to conenct to ', peerId);
   if (!globalState.machine) return panic();
   globalState.machine.connect(peerId);
 };
@@ -149,25 +149,16 @@ const WhenHaveUserIdPart = (userId: string) => {
 
 
   const onFileRemoveButtonClicked = (fileName: string) => {
-    console.log("Will try to remove ", fileName);
     setAddedFiles(cur => cur.filter(e => e.name !== fileName));
   };
 
 
   const onMoreFilesAdded = (files: File[]) => {
     if (files.length <= 0) return;
+
     setAddedFiles(e => [...e, ...files]);
   };
 
-  const triggerNextFileSent = () => {
-    if (!globalState.machine) return panic();
-    const [toBeSentFiles, _stbs] = filesQueuedToBeSentSignal;
-
-    const toBeQueued = toBeSentFiles().at(0);
-    if (!toBeQueued) return panic();
-
-    globalState.machine.sendFile(toBeQueued.file);
-  };
 
   const onFileSent = () => {
     const files = addedFiles();
@@ -181,20 +172,17 @@ const WhenHaveUserIdPart = (userId: string) => {
     if (fileList.length <= 0) return;
 
     filesQueuedToBeSentSignal[1](e => [...e, ...fileList]);
+
+    const names = fileList.map(e => e.file.name);
+    const [_s, setSentFiles] = sentFilesSignal;
+    const [_f, setFilesPausedToBeSent] = filesPausedToBeSentSignal;
+    setSentFiles(cur => cur.filter(e => !names.includes(e.filename)));
+    setFilesPausedToBeSent(cur => cur.filter(e => !names.includes(e.file.name)));
+
     setAddedFiles([]);
     triggerFileSent();
   };
 
-
-
-  const triggerFileSent = () => {
-    // This means something need to be queued
-    const [toBeSentFiles] = filesQueuedToBeSentSignal;
-    const [sendingFileInfo] = sendingFileInfoSignal;
-
-    if (!!sendingFileInfo() || toBeSentFiles().length <= 0) return;
-    triggerNextFileSent();
-  };
 
 
   return (
@@ -235,7 +223,7 @@ const WhenHaveUserIdPart = (userId: string) => {
                     </For>
                   </ul>
                   <div class="card-actions w-full">
-                    <label for="file-upload" class="flex-1 btn">
+                    <label id="file-upload" for="file-upload" class="flex-1 btn">
                       <span>Add Files</span>
                       <input
                         id="file-upload"
@@ -262,12 +250,12 @@ const WhenHaveUserIdPart = (userId: string) => {
               id="search-label"
               class="modal-toggle"
             />
-            <label for="search-label" class="modal cursor-pointer backdrop-blur-md">
-              <label class="modal-box w-11/12 max-w-5xl relative p-2" for="">
+            <label id="search-label" for="search-label" class="modal cursor-pointer backdrop-blur-md">
+              <label id="random-id-1" class="modal-box w-11/12 max-w-5xl relative p-2" for="">
                 <PeerSearch onclick={handleConnect} />
               </label>
             </label>
-            <label for="search-label" class="btn btn-primary modal-button">Connect to a peer</label>
+            <label id="random-id-2" for="search-label" class="btn btn-primary modal-button">Connect to a peer</label>
           </Show>
         </div>
       </div>

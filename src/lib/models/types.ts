@@ -1,4 +1,3 @@
-export type RoomId = string;
 export type UserId = string;
 
 // Sends

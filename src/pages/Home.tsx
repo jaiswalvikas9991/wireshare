@@ -5,7 +5,7 @@ import Machine from "$src/lib/impls/Machine";
 import WebSocketSignallingAdaptor from "$src/lib/impls/WebSocketSignallingAdaptor";
 import userIdSignal from "$src/stores/user";
 import { Component, For, Show, createSignal, onMount } from "solid-js";
-import { filesQueuedToBeSentSignal, sendingFileInfoSignal, sentFilesSignal, receivedFilesSignal, filesPausedToBeSentSignal, filesPausedToBeReceivedSignal } from "$src/stores/files";
+import { filesQueuedToBeSentSignal, sentFilesSignal, receivedFilesSignal, filesPausedToBeSentSignal, filesPausedToBeReceivedSignal } from "$src/stores/files";
 import ClipboardSvg from "$src/components/ClipboardSvg";
 import peerIdSignal from "$src/stores/peer";
 import CrossSvg from "$src/components/CrossSvg";
@@ -249,7 +249,7 @@ const Home: Component = () => {
   onMount(async () => {
     setLoading(true);
 
-    const signallingAdaptor = new WebSocketSignallingAdaptor('global')
+    const signallingAdaptor = new WebSocketSignallingAdaptor();
     globalState.machine = new Machine(signallingAdaptor);
     await makeLocalDb();
 

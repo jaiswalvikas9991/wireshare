@@ -3,7 +3,9 @@ import ByteArray from "$src/BytesArray";
 import { triggerFileSent } from "$src/Common";
 import { FIXED_FILE_CHUNK_SIZE, MAX_WEBRTC_MSG_SIZE } from "$src/Constants";
 import { globalState } from "$src/GlobalState";
+import { errroMsgSignal } from "$src/stores/errorMsg";
 import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivedFilesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal, sentFilesSignal } from "$src/stores/files";
+import { loadingSignal } from "$src/stores/loading";
 import peerIdSignal from "$src/stores/peer";
 import userIdSignal from "$src/stores/user";
 import { UserId } from "../models/types";
@@ -12,7 +14,7 @@ import { STUN_SERVERS } from "../utils/Constants";
 import { flowError, panic } from "../utils/Error";
 import { toBase10, waitFor } from "../utils/utils";
 
-enum States {
+export enum States {
     STALE,
     READY,
     CONNECTING,
@@ -107,10 +109,10 @@ const isTransitionAllowed = (from: States, to: States): boolean => {
 
 enum ReceiveSignallingTypes {
     CONNECTED_TO_SERVER = 0,
-    PEERCONNECTED = 1,
-    PEERDISCONNECTED = 2,
-    OFFER = 3,
-    ANSWER = 4
+    OFFER = 1,
+    ANSWER = 2,
+    ICE_CANDIDATE = 3,
+    OFFER_REJECT = 4,
 }
 type ConnectedToServer = {
     type: ReceiveSignallingTypes.CONNECTED_TO_SERVER,
@@ -126,7 +128,16 @@ type Answer = {
     fromUserId: UserId
     answer: string
 };
-type ReceiveSignallingMsg = ConnectedToServer | Offer | Answer;
+type ICECandidate = {
+    type: ReceiveSignallingTypes.ICE_CANDIDATE,
+    fromUserId: UserId
+    ice: string
+};
+type OfferReject = {
+    type: ReceiveSignallingTypes.OFFER_REJECT,
+    fromUserId: UserId
+};
+type ReceiveSignallingMsg = ConnectedToServer | Offer | Answer | ICECandidate | OfferReject;
 
 type SignallingSendMsg = {
     toUserId: UserId,
@@ -143,8 +154,13 @@ class Machine {
 
         this.signallingAdaptor = signallingAdaptor;
         this.signallingAdaptor.onMsg(this.onSignallingMsg.bind(this));
+        this.signallingAdaptor.onClose(this.onSignallingClose.bind(this));
+        this.signallingAdaptor.onErr(this.onSignallingErr.bind(this));
     }
 
+    state() {
+        return this.currentState.type;
+    }
 
     // TODO: May be can be improved
     calculateNumChunksToBeSent(apparentFileSize: number, negotiatedFileChunkSize: number) {
@@ -190,6 +206,17 @@ class Machine {
         this.signallingAdaptor.send(JSON.stringify(data));
     }
 
+    onSignallingClose() {
+        if (this.currentState.type === States.STALE || this.currentState.type === States.READY || this.currentState.type === States.CONNECTING) {
+            errroMsgSignal[1]("Connection to the sever lost please refresh and try again");
+        }
+        this.currentState = { type: States.STALE };
+    }
+
+    onSignallingErr() {
+        this.onSignallingClose();
+    }
+
     async onSignallingMsg(message: string) {
         const msg = JSON.parse(message) as ReceiveSignallingMsg;
 
@@ -207,7 +234,17 @@ class Machine {
             }
             // Server msg end
             case ReceiveSignallingTypes.OFFER: {
-                if (this.currentState.type !== States.READY) return panic();
+                if (this.currentState.type === States.STALE) return panic();
+                if (this.currentState.type !== States.READY) {
+                    this.sendSignal({
+                        toUserId: msg.fromUserId,
+                        msg: {
+                            type: ReceiveSignallingTypes.OFFER_REJECT,
+                            fromUserId: this.currentState.userId
+                        }
+                    });
+                    return panic();
+                }
 
                 const [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel] = this.initNewRTCObj();
 
@@ -217,6 +254,7 @@ class Machine {
                 await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createAnswer());
 
                 if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
+                console.log('Sending offer res');
                 this.sendSignal({
                     toUserId: msg.fromUserId,
                     msg: {
@@ -244,9 +282,20 @@ class Machine {
                 if (this.currentState.type !== States.CONNECTING) return panic();
 
                 const answer = new RTCSessionDescription(JSON.parse(msg.answer) as any);
+                console.log('Got answer');
                 await this.currentState.rtcPeerConnection.setRemoteDescription(answer);
 
 
+                break;
+            }
+            case ReceiveSignallingTypes.ICE_CANDIDATE: {
+                if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
+                this.currentState.rtcPeerConnection.addIceCandidate(JSON.parse(msg.ice) as RTCIceCandidateInit);
+
+                break;
+            }
+            case ReceiveSignallingTypes.OFFER_REJECT: {
+                onOfferRejected();
                 break;
             }
         }
@@ -405,7 +454,7 @@ class Machine {
 
         // init data channels
         const rtcSignallingChannel = rtcPeerConnection.createDataChannel('signal', {
-            ordered: true,
+            ordered: false,
             negotiated: true,
             id: 1
         });
@@ -413,16 +462,24 @@ class Machine {
 
 
         const rtcDataChannel = rtcPeerConnection.createDataChannel('data', {
-            ordered: true,
+            ordered: false,
             negotiated: true,
             id: 0
         });
         this.initRTCDataChannel(rtcDataChannel);
 
         // TOOD - Remove this
-        // rtcPeerConnection.onconnectionstatechange = () => {
-        //     console.log('State changed ', rtcPeerConnection.connectionState);
-        // };
+        rtcPeerConnection.onconnectionstatechange = () => {
+            console.log('State changed ', rtcPeerConnection.connectionState);
+        };
+        rtcPeerConnection.onnegotiationneeded = (e) => {
+            console.log(e);
+        };
+        rtcPeerConnection.onicecandidate = (e) => {
+            if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
+            if (e.candidate === null) return;
+            this.sendSignal({ toUserId: this.currentState.peerId, msg: { type: ReceiveSignallingTypes.ICE_CANDIDATE, fromUserId: this.currentState.userId, ice: JSON.stringify(e.candidate) } });
+        };
 
         return [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel];
     }
@@ -435,6 +492,7 @@ class Machine {
 
         if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
 
+        console.log('Sending offer');
         this.sendSignal({
             toUserId: peerId,
             msg: {
@@ -597,8 +655,10 @@ type PauseReceivingRes = {
 // Machine LifeCycle
 const onMachineReady = (ctx: ReadyCxt) => {
     const [_u, setUserId] = userIdSignal;
+    const [_l, setLoading] = loadingSignal;
 
     setUserId(ctx.userId);
+    setLoading(false);
 };
 
 const onPeerConnected = (peerId: string) => {
@@ -765,6 +825,12 @@ const onFileReceived = async () => {
 
     setReceivingFileInfo(null);
     setReceivedBytes(0);
+
+    setTimeout(() => {
+        if(globalState.machine === null) return;
+        if(globalState.machine.state() !== States.CONNECTED) return;
+        triggerFileSent();
+    }, 3000);
 };
 
 const onFileSent = () => {
@@ -788,6 +854,12 @@ const onFileSent = () => {
 const onChunkReceived = async (chunk: ByteArray, chunkNumber: number, fileName: string) => {
     if (!globalState.localStorage) return panic();
     await globalState.localStorage.addSplitToReceivedFileInfo(fileName, chunk.getBlob());
+};
+
+
+const onOfferRejected = () => {
+    errroMsgSignal[1]("The other seems busy. Try after sometime");
+
 };
 
 

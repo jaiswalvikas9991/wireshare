@@ -1,30 +1,13 @@
 import { Component } from "solid-js";
 
-//<style lang="postcss">
-//	svg {
-//		animation: loop 6s ease-in infinite;
-//		transform: rotate(45deg);
-//	}
-//
-//	@keyframes loop {
-//		0% {
-//			margin-left: 0%;
-//		}
-//		100% {
-//			margin-left: 100%;
-//		}
-//	}
-//</style>
 const Loading: Component = () => {
   return (
     <div class="overflow-hidden flex flex-1 flex-col rounded-lg p-3">
       <svg
         class="w-8 h-8"
-        id="Capa_1"
+        id="loading-svg"
         enable-background="new 0 0 512.009 512.009"
         viewBox="0 0 512.009 512.009"
-        xmlns="http://www.w3.org/2000/svg"
-        xmlns: xlink="http://www.w3.org/1999/xlink"
       >
         <linearGradient
           id="SVGID_1_"

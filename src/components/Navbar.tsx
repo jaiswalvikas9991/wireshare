@@ -25,7 +25,7 @@ const Navbar: Component = () => {
         </span>
       </div>
       <div class="navbar-end">
-        <label for="notification-label" class="btn btn-ghost btn-circle">
+        <label id="random-id-4" for="notification-label" class="btn btn-ghost btn-circle">
           <div class="indicator">
             <BellSvg />
             <Show when={sendingFileInfo() || receivingFileInfo()}>
@@ -39,7 +39,7 @@ const Navbar: Component = () => {
           <div class="modal-box p-2">
             <NotificationCard />
           </div>
-          <label class="modal-backdrop" for="notification-label">Close</label>
+          <label id="random-id-05" class="modal-backdrop" for="notification-label">Close</label>
         </div>
 
 

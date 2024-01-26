@@ -19,6 +19,18 @@ class WebSocketSignallingAdaptor implements SignallingPort {
             handler(data);
         };
     }
+
+    onErr(handler: () => unknown): void {
+        this.inner.onerror = () => {
+            handler();
+        };
+    }
+
+    onClose(handler: () => unknown): void {
+        this.inner.close = () => {
+            handler();
+        };
+    }
 }
 
 export default WebSocketSignallingAdaptor;

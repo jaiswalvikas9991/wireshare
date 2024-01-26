@@ -1,10 +1,10 @@
 import { Component } from "solid-js";
 
-type ErrorPopup = {
+type ErrorPopupProps = {
   msg: string | null,
   onclose: () => unknown
 }
-const ErrorPopup: Component<ErrorPopup> = (props) => {
+const ErrorPopup: Component<ErrorPopupProps> = (props) => {
   return (
     <>
       <input type="checkbox" id="message-modal" class="modal-toggle" checked={props.msg !== null} />

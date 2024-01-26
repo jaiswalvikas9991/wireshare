@@ -16,6 +16,8 @@ import { panic } from "$src/lib/utils/Error";
 import ErrorPopup from "$src/components/ErrorPopup";
 import Navbar from "$src/components/Navbar";
 import { copyTextToClipboard, triggerFileSent } from "$src/Common";
+import { errroMsgSignal } from "$src/stores/errorMsg";
+import { loadingSignal } from "$src/stores/loading";
 
 
 const handleConnect = (peerId: string) => {
@@ -51,8 +53,8 @@ const makeLocalDb = async () => {
 
 const UserClipboardCard = (userId: string) => {
   return (
-    <div class="dropdown dropdown-hover">
-      <div class="avatar placeholder">
+    <div class="dropdown">
+      <div tabindex="0" role="button" class="avatar placeholder">
         <div class="w-20 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
           <span class="text-2xl">
             {userId ? userId.substring(0, Math.min(userId.length, 3)) : 'UNK'}
@@ -60,10 +62,11 @@ const UserClipboardCard = (userId: string) => {
         </div>
       </div>
       <div
+        tabindex="0"
         class="dropdown-content shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
       >
-        <div class="card-body p-1 flex flex-1 flex-row items-center">
-          <p>{userId}</p>
+        <div class="card-body p-0 flex flex-1 flex-row items-center">
+          <p class="ml-4">{userId}</p>
           <span
             class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
             onclick={() => copyTextToClipboard(userId)}
@@ -84,8 +87,8 @@ const onDisconnectPeer = () => {
 
 const PeerClipboardCard = (peerId: string) => {
   return (
-    <div class="dropdown dropdown-end dropdown-hover">
-      <div class="avatar placeholder">
+    <div class="dropdown dropdown-end">
+      <div tabindex="0" role="button" class="avatar placeholder">
         <div class="w-20 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
           <span class="text-2xl">
             {peerId
@@ -96,10 +99,11 @@ const PeerClipboardCard = (peerId: string) => {
       </div>
 
       <div
-        class="dropdown-content shadow bg-neutral rounded-box flex flex-row items-center w-56 sm:w-72 card text-neutral-content break-all"
+        tabindex="0"
+        class="dropdown-content shadow bg-neutral rounded-box flex flex-row items-center w-56 card text-neutral-content break-all"
       >
-        <div class="card-body p-1 flex flex-1 flex-row items-center">
-          <p>{peerId}</p>
+        <div class="card-body p-0 flex flex-1 flex-row items-center">
+          <p class="ml-4">{peerId}</p>
           <span
             class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent p-0"
             onclick={onDisconnectPeer}
@@ -241,10 +245,10 @@ const WhenHaveUserIdPart = (userId: string) => {
 };
 
 
-const [msg, setMsg] = createSignal<string | null>(null);
 const Home: Component = () => {
   const [userId] = userIdSignal;
-  const [loading, setLoading] = createSignal<boolean>(true);
+  const [loading, setLoading] = loadingSignal;
+  const [errroMsg, setErrroMsg] = errroMsgSignal;
 
   onMount(async () => {
     setLoading(true);
@@ -252,8 +256,6 @@ const Home: Component = () => {
     const signallingAdaptor = new WebSocketSignallingAdaptor();
     globalState.machine = new Machine(signallingAdaptor);
     await makeLocalDb();
-
-    setLoading(false);
   });
 
   return (
@@ -267,7 +269,7 @@ const Home: Component = () => {
 
       <Navbar />
 
-      <ErrorPopup msg={msg()} onclose={() => setMsg(null)} />
+      <ErrorPopup msg={errroMsg()} onclose={() => setErrroMsg(null)} />
 
       <Show when={userId()}>
         {WhenHaveUserIdPart(userId()!)}

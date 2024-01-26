@@ -112,12 +112,12 @@ const NotificationCard: Component = () => {
       <div class="tabs tabs-boxed">
         <span
           onclick={() => (setActiveTab(0))}
-          class={'tab tab-lg flex-1 ' + (activeTab() === 0 ? 'tab-active' : '')}>Sent Files</span
+          class={'tab tab-lg flex-1 ' + (activeTab() === 0 ? 'tab-active' : '')}>Sent</span
         >
 
         <span
           onclick={() => (setActiveTab(1))}
-          class={'tab tab-lg flex-1 ' + (activeTab() === 1 ? 'tab-active' : '')}>Received Files</span
+          class={'tab tab-lg flex-1 ' + (activeTab() === 1 ? 'tab-active' : '')}>Received</span
         >
       </div>
 

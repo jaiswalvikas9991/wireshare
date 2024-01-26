@@ -28,7 +28,7 @@ const InputCard: Component<InputCardProps> = (props) => {
       <div class="space-y-1 text-center">
         <FileAddSvg />
         <div class="flex text-sm text-primary-content">
-          <label for="file-upload" class="cursor-pointer rounded-md">
+          <label id="random-id-3" for="file-upload" class="cursor-pointer rounded-md">
             <span class="bg-base-300 btn-xs rounded-md">Upload a file</span>
             <input
               id="file-upload"

@@ -1,4 +1,5 @@
 import { globalState } from "./GlobalState";
+import { States } from "./lib/impls/Machine";
 import { panic } from "./lib/utils/Error";
 import { filesQueuedToBeSentSignal, sendingFileInfoSignal } from "./stores/files";
 
@@ -14,6 +15,8 @@ const triggerNextFileSent = () => {
 
 
 export const triggerFileSent = () => {
+  if(globalState.machine === null) return;
+  if(globalState.machine.state() !== States.CONNECTED) return;
   // This means something need to be queued
   const [toBeSentFiles] = filesQueuedToBeSentSignal;
   const [sendingFileInfo] = sendingFileInfoSignal;

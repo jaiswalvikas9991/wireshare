@@ -13,3 +13,18 @@
     -ms-overflow-style: none; /* IE and Edge */
     scrollbar-width: none; /* Firefox */
 }
+
+
+#loading-svg {
+    animation: loop 6s ease-in infinite;
+    transform: rotate(45deg);
+}
+
+@keyframes loop {
+    0% {
+        margin-left: 0%;
+    }
+    100% {
+        margin-left: 100%;
+    }
+}

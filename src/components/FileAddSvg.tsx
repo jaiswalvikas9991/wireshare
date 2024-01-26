@@ -1,7 +1,7 @@
 const FileAddSvg = () => {
   return (
     <svg
-      class="mx-auto h-12 w-12 text-primary-content"
+      class="mx-auto h-16 w-16 text-primary-content"
       stroke="currentColor"
       fill="none"
       viewBox="0 0 48 48"

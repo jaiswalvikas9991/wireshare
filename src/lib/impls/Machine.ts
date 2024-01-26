@@ -254,7 +254,6 @@ class Machine {
                 await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createAnswer());
 
                 if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
-                console.log('Sending offer res');
                 this.sendSignal({
                     toUserId: msg.fromUserId,
                     msg: {
@@ -282,7 +281,6 @@ class Machine {
                 if (this.currentState.type !== States.CONNECTING) return panic();
 
                 const answer = new RTCSessionDescription(JSON.parse(msg.answer) as any);
-                console.log('Got answer');
                 await this.currentState.rtcPeerConnection.setRemoteDescription(answer);
 
 
@@ -469,12 +467,12 @@ class Machine {
         this.initRTCDataChannel(rtcDataChannel);
 
         // TOOD - Remove this
-        rtcPeerConnection.onconnectionstatechange = () => {
-            console.log('State changed ', rtcPeerConnection.connectionState);
-        };
-        rtcPeerConnection.onnegotiationneeded = (e) => {
-            console.log(e);
-        };
+        // rtcPeerConnection.onconnectionstatechange = () => {
+        //     console.log('State changed ', rtcPeerConnection.connectionState);
+        // };
+        // rtcPeerConnection.onnegotiationneeded = (e) => {
+        //     console.log(e);
+        // };
         rtcPeerConnection.onicecandidate = (e) => {
             if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
             if (e.candidate === null) return;
@@ -492,7 +490,6 @@ class Machine {
 
         if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
 
-        console.log('Sending offer');
         this.sendSignal({
             toUserId: peerId,
             msg: {

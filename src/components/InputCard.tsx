@@ -22,27 +22,28 @@ const InputCard: Component<InputCardProps> = (props) => {
   };
 
   return (
-    <div
-      class="flex justify-center px-6 pt-5 pb-6 border-2 text-primary-content border-dashed rounded-md w-full"
-    >
-      <div class="space-y-1 text-center">
-        <FileAddSvg />
-        <div class="flex text-sm text-primary-content">
-          <label id="random-id-3" for="file-upload" class="cursor-pointer rounded-md">
-            <span class="bg-base-300 btn-xs rounded-md">Upload a file</span>
-            <input
-              id="file-upload"
-              name="file-upload"
-              type="file"
-              multiple={true}
-              class="sr-only"
-              onchange={onFilesAdded}
-            />
-          </label>
-          <p class="pl-1">or drag and drop</p>
+    <>
+      <input
+        id="file-upload"
+        name="file-upload"
+        type="file"
+        multiple={true}
+        class="sr-only"
+        onchange={onFilesAdded}
+      />
+      <label id="random-id-3" for="file-upload" class="cursor-pointer rounded-md hover:opacity-50">
+        <div
+          class="flex justify-center px-6 pt-5 pb-6 border-2 text-primary-content border-dashed rounded-md"
+        >
+          <div class="space-y-1 text-center">
+            <FileAddSvg />
+            <div class="flex text-sm text-primary-content">
+              <span class="text-sm">Upload a file</span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </label>
+    </>
   );
 };
 

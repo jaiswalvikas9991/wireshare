@@ -4,14 +4,14 @@ import { LocalStorage } from "$src/lib/impls/DexieDb";
 import Machine from "$src/lib/impls/Machine";
 import WebSocketSignallingAdaptor from "$src/lib/impls/WebSocketSignallingAdaptor";
 import userIdSignal from "$src/stores/user";
-import { Component, For, Show, createSignal, onMount } from "solid-js";
+import { Component, For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { filesQueuedToBeSentSignal, sentFilesSignal, receivedFilesSignal, filesPausedToBeSentSignal, filesPausedToBeReceivedSignal } from "$src/stores/files";
 import ClipboardSvg from "$src/components/ClipboardSvg";
 import peerIdSignal from "$src/stores/peer";
 import CrossSvg from "$src/components/CrossSvg";
 import InputCard from "$src/components/InputCard";
 import PeerSearch from "$src/components/PeerSearch";
-import { ToBeSentFile } from "$src/lib/models/types";
+import { ToBeSentFile, UserId } from "$src/lib/models/types";
 import { panic } from "$src/lib/utils/Error";
 import ErrorPopup from "$src/components/ErrorPopup";
 import Navbar from "$src/components/Navbar";
@@ -19,11 +19,6 @@ import { copyTextToClipboard, triggerFileSent } from "$src/Common";
 import { errroMsgSignal } from "$src/stores/errorMsg";
 import { loadingSignal } from "$src/stores/loading";
 
-
-const handleConnect = (peerId: string) => {
-  if (!globalState.machine) return panic();
-  globalState.machine.connect(peerId);
-};
 
 const makeLocalDb = async () => {
   globalState.localStorage = new LocalStorage();
@@ -53,27 +48,17 @@ const makeLocalDb = async () => {
 
 const UserClipboardCard = (userId: string) => {
   return (
-    <div class="dropdown">
-      <div tabindex="0" role="button" class="avatar placeholder">
-        <div class="w-20 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
-          <span class="text-2xl">
-            {userId ? userId.substring(0, Math.min(userId.length, 3)) : 'UNK'}
-          </span>
-        </div>
-      </div>
-      <div
-        tabindex="0"
-        class="dropdown-content shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
-      >
-        <div class="card-body p-0 flex flex-1 flex-row items-center">
-          <p class="ml-4">{userId}</p>
-          <span
-            class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
-            onclick={() => copyTextToClipboard(userId)}
-          >
-            <ClipboardSvg />
-          </span>
-        </div>
+    <div
+      class="shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
+    >
+      <div class="card-body p-0 flex flex-1 flex-row items-center">
+        <p class="ml-4">{userId}</p>
+        <span
+          class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
+          onclick={() => copyTextToClipboard(userId)}
+        >
+          <ClipboardSvg />
+        </span>
       </div>
     </div>
   );
@@ -87,37 +72,24 @@ const onDisconnectPeer = () => {
 
 const PeerClipboardCard = (peerId: string) => {
   return (
-    <div class="dropdown dropdown-end">
-      <div tabindex="0" role="button" class="avatar placeholder">
-        <div class="w-20 rounded-full ring ring-primary ring-offset-base-100 ring-offset-2">
-          <span class="text-2xl">
-            {peerId
-              ? peerId.substring(0, Math.min(peerId.length, 3))
-              : 'UNK'}
-          </span>
-        </div>
-      </div>
+    <div
+      class="shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
+    >
+      <div class="card-body p-0 flex flex-1 flex-row items-center">
+        <p class="ml-4">{peerId}</p>
+        <span
+          class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent p-0"
+          onclick={onDisconnectPeer}
+        >
+          <CrossSvg />
+        </span>
 
-      <div
-        tabindex="0"
-        class="dropdown-content shadow bg-neutral rounded-box flex flex-row items-center w-56 card text-neutral-content break-all"
-      >
-        <div class="card-body p-0 flex flex-1 flex-row items-center">
-          <p class="ml-4">{peerId}</p>
-          <span
-            class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent p-0"
-            onclick={onDisconnectPeer}
-          >
-            <CrossSvg />
-          </span>
-
-          <span
-            class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
-            onclick={() => copyTextToClipboard(peerId)}
-          >
-            <ClipboardSvg />
-          </span>
-        </div>
+        <span
+          class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
+          onclick={() => copyTextToClipboard(peerId)}
+        >
+          <ClipboardSvg />
+        </span>
       </div>
     </div>
   );
@@ -164,16 +136,21 @@ const WhenHaveUserIdPart = (userId: string) => {
     triggerFileSent();
   };
 
+  const handleConnect = (peerId: string) => {
+    if (!globalState.machine) return panic();
+    globalState.machine.connect(peerId);
+  };
+
 
 
   return (
     <>
       <div class="flex flex-1 flex-col justify-center items-center pt-5 space-y-1">
-        <div class="flex w-full flex-row justify-center items-center">
+        <div class="flex w-full flex-col justify-center items-center">
           {UserClipboardCard(userId)}
 
           <Show when={peerId() !== null}>
-            <div class="w-1/3 md:w-1/4 bg-primary h-1" />
+            <div class="divider w-40 sm:w-60 self-center">Connected to</div>
             {PeerClipboardCard(peerId()!)}
           </Show>
         </div>
@@ -181,7 +158,7 @@ const WhenHaveUserIdPart = (userId: string) => {
 
         <div class="flex-1 flex flex-col justify-center items-center w-full">
           <Show when={peerId() !== null}>
-            <div class="card w-4/5 md:w-2/4 lg:w-4/12 bg-primary text-primary-content">
+            <div class="card md:w-1/2 w-9/12 bg-primary text-primary-content">
               <div class="card-body p-4">
                 <Show when={addedFiles().length > 0}>
                   <ul
@@ -226,17 +203,7 @@ const WhenHaveUserIdPart = (userId: string) => {
           </Show>
 
           <Show when={peerId() == null}>
-            <input
-              type="checkbox"
-              id="search-label"
-              class="modal-toggle"
-            />
-            <label id="search-label" for="search-label" class="modal cursor-pointer backdrop-blur-md">
-              <label id="random-id-1" class="modal-box w-11/12 max-w-5xl relative p-2" for="">
-                <PeerSearch onclick={handleConnect} />
-              </label>
-            </label>
-            <label id="random-id-2" for="search-label" class="btn btn-primary modal-button">Connect to a peer</label>
+            <PeerSearch userId={userId} onclick={handleConnect} />
           </Show>
         </div>
       </div>

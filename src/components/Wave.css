@@ -1,0 +1,47 @@
+.path {
+    stroke-dasharray: 2000;
+    stroke-dashoffset: 2000;
+    animation: dash 3s linear forwards;
+}
+
+@keyframes dash {
+    to {
+        stroke-dashoffset: 0;
+    }
+}
+
+.fill {
+    animation: color-bottom 3.2s linear forwards;
+}
+
+@keyframes color-bottom {
+    0% {
+        fill: white;
+    }
+
+    90% {
+        fill: white;
+    }
+
+    100% {
+        fill: #4C1D95;
+    }
+}
+
+.rect {
+    animation: color-top 3.2s linear forwards;
+}
+
+@keyframes color-top {
+    0% {
+        fill: white;
+    }
+
+    90% {
+        fill: white;
+    }
+
+    100% {
+        fill: #ffffff;
+    }
+}

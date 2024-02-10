@@ -1,8 +1,7 @@
-//const WS_URL = 'ws://127.0.0.1:8000';
-const WS_URL = 'wss://wireshare-backend.shuttleapp.rs';
+//export const WS_URL = 'ws://127.0.0.1:8000';
+export const WS_URL = 'wss://wireshare-backend.shuttleapp.rs';
 
 
-export { WS_URL };
 
 export const MB = 1024 * 1024;
 export const STUN_SERVERS = [

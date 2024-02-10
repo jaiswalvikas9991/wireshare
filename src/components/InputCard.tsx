@@ -31,14 +31,14 @@ const InputCard: Component<InputCardProps> = (props) => {
         class="sr-only"
         onchange={onFilesAdded}
       />
-      <label id="random-id-3" for="file-upload" class="cursor-pointer rounded-md hover:opacity-50">
+      <label id="random-id-3" for="file-upload" class="cursor-pointer rounded-md hover:opacity-60">
         <div
-          class="flex justify-center px-6 pt-5 pb-6 border-2 text-primary-content border-dashed rounded-md"
+          class="flex justify-center px-6 pt-5 pb-6 border-2 border-primary-content text-primary-focus border-dashed rounded-xl bg-base-100"
         >
           <div class="space-y-1 text-center">
             <FileAddSvg />
-            <div class="flex text-sm text-primary-content">
-              <span class="text-sm">Upload a file</span>
+            <div class="flex text-sm">
+              <span class="text-sm font-semibold">Upload a file</span>
             </div>
           </div>
         </div>

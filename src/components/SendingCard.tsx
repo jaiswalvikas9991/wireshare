@@ -19,7 +19,7 @@ const SendingCard: Component<SendingCardProps> = (props) => {
                 {props.sendingFileInfo.file.name}
               </h2>
               <progress
-                class="progress progress-primary w-full bg-neutral"
+                class="progress progress-primary w-full bg-base-300"
                 value={100 * (props.sentBytes / props.sendingFileInfo.file.size)}
                 max="100"
               />

@@ -253,6 +253,7 @@ class Machine {
 
                 await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createAnswer());
 
+                onOfferReceived();
                 if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
                 this.sendSignal({
                     toUserId: msg.fromUserId,
@@ -300,8 +301,10 @@ class Machine {
     }
 
     initRTCDataChannel(channel: RTCDataChannel) {
+        channel.binaryType = 'arraybuffer';
         channel.onmessage = (e: MessageEvent<unknown>) => {
             const data = e.data;
+            console.log(data);
             if (!(data instanceof ArrayBuffer)) return panic();
             this.onDataReceived(data);
         };
@@ -661,6 +664,7 @@ const onMachineReady = (ctx: ReadyCxt) => {
 const onPeerConnected = (peerId: string) => {
     const [_peerId, setPeerId] = peerIdSignal;
     setPeerId(peerId);
+    loadingSignal[1](false);
 };
 const onPeerDisconnected = (peerId: string) => {
     const [sendingFileInfo, setSendingFileInfo] = sendingFileInfoSignal;
@@ -857,6 +861,10 @@ const onChunkReceived = async (chunk: ByteArray, chunkNumber: number, fileName: 
 const onOfferRejected = () => {
     errroMsgSignal[1]("The other seems busy. Try after sometime");
 
+};
+
+const onOfferReceived = () => {
+    loadingSignal[1](true);
 };
 
 

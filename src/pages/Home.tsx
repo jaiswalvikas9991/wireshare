@@ -4,20 +4,22 @@ import { LocalStorage } from "$src/lib/impls/DexieDb";
 import Machine from "$src/lib/impls/Machine";
 import WebSocketSignallingAdaptor from "$src/lib/impls/WebSocketSignallingAdaptor";
 import userIdSignal from "$src/stores/user";
-import { Component, For, Show, createEffect, createSignal, onMount } from "solid-js";
+import { Component, For, Show, createSignal, onMount } from "solid-js";
 import { filesQueuedToBeSentSignal, sentFilesSignal, receivedFilesSignal, filesPausedToBeSentSignal, filesPausedToBeReceivedSignal } from "$src/stores/files";
 import ClipboardSvg from "$src/components/ClipboardSvg";
 import peerIdSignal from "$src/stores/peer";
 import CrossSvg from "$src/components/CrossSvg";
 import InputCard from "$src/components/InputCard";
 import PeerSearch from "$src/components/PeerSearch";
-import { ToBeSentFile, UserId } from "$src/lib/models/types";
+import { ToBeSentFile } from "$src/lib/models/types";
 import { panic } from "$src/lib/utils/Error";
 import ErrorPopup from "$src/components/ErrorPopup";
 import Navbar from "$src/components/Navbar";
 import { copyTextToClipboard, triggerFileSent } from "$src/Common";
 import { errroMsgSignal } from "$src/stores/errorMsg";
 import { loadingSignal } from "$src/stores/loading";
+import Wave from "$src/components/Wave";
+import PinSvg from "$src/components/PinSvg";
 
 
 const makeLocalDb = async () => {
@@ -49,7 +51,7 @@ const makeLocalDb = async () => {
 const UserClipboardCard = (userId: string) => {
   return (
     <div
-      class="shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
+      class="shadow-md bg-base-100 rounded-box flex flex-row items-center w-60 card break-all"
     >
       <div class="card-body p-0 flex flex-1 flex-row items-center">
         <p class="ml-4">{userId}</p>
@@ -73,7 +75,7 @@ const onDisconnectPeer = () => {
 const PeerClipboardCard = (peerId: string) => {
   return (
     <div
-      class="shadow bg-neutral rounded-box flex flex-row items-center w-40 sm:w-60 card text-neutral-content break-all"
+      class="shadow-md rounded-box flex flex-row items-center w-60 card break-all"
     >
       <div class="card-body p-0 flex flex-1 flex-row items-center">
         <p class="ml-4">{peerId}</p>
@@ -138,6 +140,7 @@ const WhenHaveUserIdPart = (userId: string) => {
 
   const handleConnect = (peerId: string) => {
     if (!globalState.machine) return panic();
+    loadingSignal[1](true);
     globalState.machine.connect(peerId);
   };
 
@@ -150,7 +153,7 @@ const WhenHaveUserIdPart = (userId: string) => {
           {UserClipboardCard(userId)}
 
           <Show when={peerId() !== null}>
-            <div class="divider w-40 sm:w-60 self-center">Connected to</div>
+            <div class="divider w-60 self-center">Connected to</div>
             {PeerClipboardCard(peerId()!)}
           </Show>
         </div>
@@ -158,45 +161,50 @@ const WhenHaveUserIdPart = (userId: string) => {
 
         <div class="flex-1 flex flex-col justify-center items-center w-full">
           <Show when={peerId() !== null}>
-            <div class="card md:w-1/2 w-9/12 bg-primary text-primary-content">
-              <div class="card-body p-4">
+            <div class="card 2xl:w-1/4 lg:w-5/12 md:w-2/3 w-9/12">
+              <div class="card-body p-0">
                 <Show when={addedFiles().length > 0}>
-                  <ul
-                    class="bg-base-100 w-full h-min max-h-48 p-2 rounded-box overflow-y-scroll overflow-x-hidden no-scrollbar"
-                  >
-                    <For each={addedFiles()}>
-                      {(file, _id) =>
-                        <li id={file.name} class="card flex flex-row items-center flex-1">
-                          <div class="card-body flex-1 flex-row p-2">
-                            <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.name}</h2>
-                            <span
-                              class="btn btn-outline btn-circle btn-error cursor-pointer border-transparent"
-                              onclick={() => onFileRemoveButtonClicked(file.name)}
-                            >
-                              <CrossSvg />
-                            </span>
-                          </div>
-                        </li>
-                      }
-                    </For>
-                  </ul>
-                  <div class="card-actions w-full">
-                    <label id="file-upload-label" for="file-upload" class="flex-1 btn">
-                      <span>Add Files</span>
-                      <input
-                        id="file-upload"
-                        name="file-upload"
-                        type="file"
-                        multiple={true}
-                        class="sr-only"
-                        onchange={e => e.currentTarget.files !== null && onMoreFilesAdded([...e.currentTarget.files])}
-                      />
-                    </label>
-                    <button class="btn flex-1" onclick={onFileSent}>Send</button>
+                  <div class="w-full p-2 rounded-box bg-base-100">
+                    <ul
+                      class="h-min max-h-48 overflow-y-scroll overflow-x-hidden no-scrollbar"
+                    >
+                      <For each={addedFiles()}>
+                        {(file, _id) =>
+                          <li id={file.name} class="card flex flex-row items-center flex-1">
+                            <div class="card-body flex-1 flex-row p-2">
+                              <PinSvg />
+                              <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.name}</h2>
+                              <span
+                                class="btn btn-outline btn-circle btn-error cursor-pointer border-transparent"
+                                onclick={() => onFileRemoveButtonClicked(file.name)}
+                              >
+                                <CrossSvg />
+                              </span>
+                            </div>
+                          </li>
+                        }
+                      </For>
+                    </ul>
+                    <div class="card-actions w-full">
+                      <label id="file-upload-label" for="file-upload" class="flex-1 btn btn-primary">
+                        <span>Add Files</span>
+                        <input
+                          id="file-upload"
+                          name="file-upload"
+                          type="file"
+                          multiple={true}
+                          class="sr-only"
+                          onchange={e => e.currentTarget.files !== null && onMoreFilesAdded([...e.currentTarget.files])}
+                        />
+                      </label>
+                      <button class="btn btn-primary flex-1" onclick={onFileSent}>Send</button>
+                    </div>
                   </div>
                 </Show>
                 <Show when={addedFiles().length === 0}>
-                  <InputCard onFilesAdded={onMoreFilesAdded} />
+                  <div class="w-full p-4 bg-base-100 rounded-lg shadow-xl">
+                    <InputCard onFilesAdded={onMoreFilesAdded} />
+                  </div>
                 </Show>
               </div>
             </div>
@@ -226,22 +234,25 @@ const Home: Component = () => {
   });
 
   return (
-    <div class="h-screen w-screen relative flex flex-col">
-      <input type="checkbox" id="loading-modal" class="modal-toggle" checked={loading()} />
-      <div class="modal backdrop-blur-md">
-        <div class="modal-box p-0">
-          <Loading />
+    <>
+      <Wave />
+      <div class="h-screen w-screen relative flex flex-col z-10">
+        <input type="checkbox" id="loading-modal" class="modal-toggle" checked={loading()} />
+        <div class="modal backdrop-blur-md">
+          <div class="modal-box p-0">
+            <Loading />
+          </div>
         </div>
+
+        <Navbar />
+
+        <ErrorPopup msg={errroMsg()} onclose={() => setErrroMsg(null)} />
+
+        <Show when={userId()}>
+          {WhenHaveUserIdPart(userId()!)}
+        </Show>
       </div>
-
-      <Navbar />
-
-      <ErrorPopup msg={errroMsg()} onclose={() => setErrroMsg(null)} />
-
-      <Show when={userId()}>
-        {WhenHaveUserIdPart(userId()!)}
-      </Show>
-    </div>
+    </>
   );
 }
 

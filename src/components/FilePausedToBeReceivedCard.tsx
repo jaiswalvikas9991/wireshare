@@ -18,7 +18,7 @@ const FilePausedToBeReceivedCard: Component<FilePausedToBeReceivedCardProps> = (
                 <div class="flex flex-col flex-1 items-start">
                   <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.name}</h2>
                   <progress
-                    class="progress progress-primary w-full bg-neutral"
+                    class="progress progress-primary w-full bg-base-300"
                     value={100 * (file.alreadyReceived / file.size)}
                     max="100"
                   />

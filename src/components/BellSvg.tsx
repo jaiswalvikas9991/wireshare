@@ -4,7 +4,7 @@ const BellSvg: Component = () => {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      class="h-5 w-5"
+      class="h-7 w-7 text-primary"
       fill="none"
       viewBox="0 0 24 24"
       stroke="currentColor"

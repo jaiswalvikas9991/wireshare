@@ -20,6 +20,8 @@ import { errroMsgSignal } from "$src/stores/errorMsg";
 import { loadingSignal } from "$src/stores/loading";
 import Wave from "$src/components/Wave";
 import PinSvg from "$src/components/PinSvg";
+import { Toaster } from 'solid-toast';
+import { toastInfo } from "$src/toast";
 
 
 const makeLocalDb = async () => {
@@ -136,6 +138,8 @@ const WhenHaveUserIdPart = (userId: string) => {
 
     setAddedFiles([]);
     triggerFileSent();
+
+    toastInfo('Sending files. Added to transfers');
   };
 
   const handleConnect = (peerId: string) => {
@@ -143,8 +147,6 @@ const WhenHaveUserIdPart = (userId: string) => {
     loadingSignal[1](true);
     globalState.machine.connect(peerId);
   };
-
-
 
   return (
     <>
@@ -202,9 +204,7 @@ const WhenHaveUserIdPart = (userId: string) => {
                   </div>
                 </Show>
                 <Show when={addedFiles().length === 0}>
-                  <div class="w-full p-4 bg-base-100 rounded-lg shadow-xl">
-                    <InputCard onFilesAdded={onMoreFilesAdded} />
-                  </div>
+                  <InputCard onFilesAdded={onMoreFilesAdded} />
                 </Show>
               </div>
             </div>
@@ -219,7 +219,6 @@ const WhenHaveUserIdPart = (userId: string) => {
   );
 };
 
-
 const Home: Component = () => {
   const [userId] = userIdSignal;
   const [loading, setLoading] = loadingSignal;
@@ -227,7 +226,6 @@ const Home: Component = () => {
 
   onMount(async () => {
     setLoading(true);
-
     const signallingAdaptor = new WebSocketSignallingAdaptor();
     globalState.machine = new Machine(signallingAdaptor);
     await makeLocalDb();
@@ -252,6 +250,8 @@ const Home: Component = () => {
           {WhenHaveUserIdPart(userId()!)}
         </Show>
       </div>
+
+      <Toaster />
     </>
   );
 }

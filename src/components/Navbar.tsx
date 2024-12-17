@@ -1,14 +1,9 @@
-import { Component, Show } from "solid-js";
+import { Component } from "solid-js";
 import RocketSvg from "./RocketSvg";
 import { APP_NAME, VERSION } from "$src/Constants";
-import BellSvg from "./BellSvg";
 import NotificationCard from "./NotificationCard";
-import { receivingFileInfoSignal, sendingFileInfoSignal } from "$src/stores/files";
 
 const Navbar: Component = () => {
-  const [sendingFileInfo] = sendingFileInfoSignal;
-  const [receivingFileInfo] = receivingFileInfoSignal;
-
   return (
     <div class="navbar bg-base-100">
       <div class="navbar-start">
@@ -24,14 +19,9 @@ const Navbar: Component = () => {
           </div>
         </span>
       </div>
-      <div class="navbar-end">
-        <label id="random-id-4" for="notification-label" class="btn btn-ghost btn-circle">
-          <div class="indicator">
-            <BellSvg />
-            <Show when={sendingFileInfo() || receivingFileInfo()}>
-              <span class="badge badge-xs badge-primary indicator-item" />
-            </Show>
-          </div>
+      <div class="navbar-end h-full flex-1 flex-row justify-end items-center">
+        <label id="random-id-4" for="notification-label" class="btn btn-outline btn-sm">
+          Transfers
         </label>
 
         <input type="checkbox" id="notification-label" class="modal-toggle" />
@@ -41,8 +31,6 @@ const Navbar: Component = () => {
           </div>
           <label id="random-id-05" class="modal-backdrop" for="notification-label">Close</label>
         </div>
-
-
       </div>
     </div >
   );

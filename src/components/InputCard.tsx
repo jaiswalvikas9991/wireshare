@@ -5,14 +5,28 @@ type InputCardProps = {
   onFilesAdded: (files: File[]) => unknown
 };
 const InputCard: Component<InputCardProps> = (props) => {
-
   type OnFileAddedEvent = Event & {
     currentTarget: HTMLInputElement;
     target: Element;
   }
   const onFilesAdded = (e: OnFileAddedEvent) => {
     const files = e.currentTarget.files;
-    if (!files) return;
+    if (!files || files.length === 0) {
+      return;
+    } 
+    onMoreFilsAdded(files);
+  };
+
+  const onDropHandler = (e) => {
+    e.preventDefault();
+    const droppedFiles = e.dataTransfer.files;
+    if(!droppedFiles || droppedFiles.length === 0) {
+      return;
+    }
+    onMoreFilsAdded(droppedFiles);
+  };
+
+  const onMoreFilsAdded = (files: FileList) => {
     const fileList = new Array<File>();
     for (let i = 0; i < files.length; i++) {
       const file = files.item(i);
@@ -22,7 +36,7 @@ const InputCard: Component<InputCardProps> = (props) => {
   };
 
   return (
-    <>
+    <div ondragover={e => e.preventDefault()} ondrop={onDropHandler} class="w-full p-4 bg-base-100 rounded-lg shadow-xl">
       <input
         id="file-upload"
         name="file-upload"
@@ -43,7 +57,7 @@ const InputCard: Component<InputCardProps> = (props) => {
           </div>
         </div>
       </label>
-    </>
+    </div>
   );
 };
 

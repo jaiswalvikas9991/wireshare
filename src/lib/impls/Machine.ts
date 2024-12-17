@@ -13,6 +13,7 @@ import SignallingPort from "../traits/SignallingPort";
 import { STUN_SERVERS } from "../utils/Constants";
 import { flowError, panic } from "../utils/Error";
 import { toBase10, waitFor } from "../utils/utils";
+import { toastInfo } from "$src/toast";
 
 export enum States {
     STALE,
@@ -730,6 +731,8 @@ const onWillBeReceivingFile = (name: string, size: number, _type: string, alread
 
     setReceivedFiles(cur => cur.filter(e => e.filename !== name));
     setFilesPausedToBeReceived(cur => cur.filter(e => e.name !== name));
+
+    toastInfo('Receiving file. Added to transfers');
 };
 
 const onFileAlreayReceived = (filename: string, size: number) => {

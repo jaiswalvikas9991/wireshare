@@ -203,6 +203,7 @@ class Machine {
 
 
     sendSignal(msg: SignallingSendMsg) {
+        //console.log("Sending " + msg);
         const data = { toUserId: msg.toUserId, msg: JSON.stringify(msg.msg) };
         this.signallingAdaptor.send(JSON.stringify(data));
     }
@@ -220,6 +221,7 @@ class Machine {
 
     async onSignallingMsg(message: string) {
         const msg = JSON.parse(message) as ReceiveSignallingMsg;
+        //console.log("Receivied " + message);
 
         switch (msg.type) {
             // Server msg start
@@ -255,7 +257,7 @@ class Machine {
                 await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createAnswer());
 
                 onOfferReceived();
-                if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
+                //if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
                 this.sendSignal({
                     toUserId: msg.fromUserId,
                     msg: {
@@ -478,8 +480,9 @@ class Machine {
         //     console.log(e);
         // };
         rtcPeerConnection.onicecandidate = (e) => {
+            //console.log(e.candidate, rtcPeerConnection.iceGatheringState);
             if (this.currentState.type === States.STALE || this.currentState.type === States.READY) return;
-            if (e.candidate === null) return;
+            //if (e.candidate === null) return;
             this.sendSignal({ toUserId: this.currentState.peerId, msg: { type: ReceiveSignallingTypes.ICE_CANDIDATE, fromUserId: this.currentState.userId, ice: JSON.stringify(e.candidate) } });
         };
 
@@ -492,7 +495,7 @@ class Machine {
         const [rtcPeerConnection, rtcDataChannel, rtcSignallingChannel] = this.initNewRTCObj();
         await rtcPeerConnection.setLocalDescription(await rtcPeerConnection.createOffer());
 
-        if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
+        //if (!(await waitFor(() => rtcPeerConnection.iceGatheringState === 'complete'))) return panic();
 
         this.sendSignal({
             toUserId: peerId,

@@ -20,7 +20,7 @@ const Navbar: Component = () => {
         </span>
       </div>
       <div class="navbar-end h-full flex-1 flex-row justify-end items-center">
-        <label id="random-id-4" for="notification-label" class="btn btn-outline btn-sm">
+        <label id="random-id-4" for="notification-label" class="btn btn-outline btn-sm btn-primary">
           Transfers
         </label>
 

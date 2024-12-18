@@ -307,7 +307,7 @@ class Machine {
         channel.binaryType = 'arraybuffer';
         channel.onmessage = (e: MessageEvent<unknown>) => {
             const data = e.data;
-            console.log(data);
+            //console.log(data);
             if (!(data instanceof ArrayBuffer)) return panic();
             this.onDataReceived(data);
         };

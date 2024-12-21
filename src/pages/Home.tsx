@@ -12,16 +12,19 @@ import CrossSvg from "$src/components/CrossSvg";
 import InputCard from "$src/components/InputCard";
 import PeerSearch from "$src/components/PeerSearch";
 import { ToBeSentFile } from "$src/lib/models/types";
-import { panic } from "$src/lib/utils/Error";
 import ErrorPopup from "$src/components/ErrorPopup";
 import Navbar from "$src/components/Navbar";
 import { copyTextToClipboard, triggerFileSent } from "$src/Common";
-import { errroMsgSignal } from "$src/stores/errorMsg";
+import errroMsgSignal from "$src/stores/errorMsg";
 import { loadingSignal } from "$src/stores/loading";
 import Wave from "$src/components/Wave";
 import PinSvg from "$src/components/PinSvg";
 import { Toaster } from 'solid-toast';
 import { toastInfo } from "$src/toast";
+import { invariantViolation } from "$src/lib/utils/Error";
+import SoftwareInfo from "$src/components/SoftwareInfo";
+import showSoftwareInfoSignal from "$src/stores/softwareInfo";
+import { SHOW_SOFTWARE_INFO_KEY } from "$src/Constants";
 
 
 const makeLocalDb = async () => {
@@ -69,7 +72,9 @@ const UserClipboardCard = (userId: string) => {
 };
 
 const onDisconnectPeer = () => {
-  if (!globalState.machine) return panic();
+  if (!globalState.machine) {
+    return invariantViolation('onDisconnectPeer cannot be called when machine is null');
+  } 
 
   globalState.machine.disconnect();
 };
@@ -103,7 +108,19 @@ const PeerClipboardCard = (peerId: string) => {
 const WhenHaveUserIdPart = (userId: string) => {
   const [peerId] = peerIdSignal;
   const [addedFiles, setAddedFiles] = createSignal<File[]>([]);
+  const [showSoftwareInfo, setShowSoftwareInfo] = showSoftwareInfoSignal;
 
+  onMount(() => {
+    const value = localStorage.getItem(SHOW_SOFTWARE_INFO_KEY);
+    if(value !== 'true') {
+      setShowSoftwareInfo(true);
+    }
+    localStorage.setItem(SHOW_SOFTWARE_INFO_KEY, 'true');
+  });
+
+  const onCloseSoftwareInfo = () => {
+    setShowSoftwareInfo(false);
+  }
 
   const onFileRemoveButtonClicked = (fileName: string) => {
     setAddedFiles(cur => cur.filter(e => e.name !== fileName));
@@ -143,7 +160,9 @@ const WhenHaveUserIdPart = (userId: string) => {
   };
 
   const handleConnect = (peerId: string) => {
-    if (!globalState.machine) return panic();
+    if (!globalState.machine) {
+      return invariantViolation('handleConnect cannot be called when machine is null');
+    } 
     loadingSignal[1](true);
     globalState.machine.connect(peerId);
   };
@@ -215,6 +234,8 @@ const WhenHaveUserIdPart = (userId: string) => {
           </Show>
         </div>
       </div>
+
+      <SoftwareInfo show={showSoftwareInfo()} onclose={onCloseSoftwareInfo}/>
     </>
   );
 };
@@ -226,9 +247,20 @@ const Home: Component = () => {
 
   onMount(async () => {
     setLoading(true);
+
     const signallingAdaptor = new WebSocketSignallingAdaptor();
     globalState.machine = new Machine(signallingAdaptor);
-    await makeLocalDb();
+
+    try {
+      await makeLocalDb();
+    }
+    catch(e) {
+      const errorMsg = 'Failed initialize local db connection. Refresh and try again';
+      console.error(errorMsg, e);
+      setErrroMsg(errorMsg);
+      setLoading(false);
+      return;
+    }
   });
 
   return (

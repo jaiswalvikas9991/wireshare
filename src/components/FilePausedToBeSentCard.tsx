@@ -1,7 +1,9 @@
 import { PausedToBeSentFiles } from "$src/lib/models/types";
-import { Component, For } from "solid-js";
+import { Component, For, Show } from "solid-js";
 import TrashSvg from "./TrashSvg";
 import ReloadSvg from "./ReloadSvg";
+import peerIdSignal from "$src/stores/peer";
+import { formatBytesHumanReadable } from "$src/Common";
 
 type FilePausedToBeSentCardProps = {
   files: PausedToBeSentFiles[],
@@ -9,6 +11,8 @@ type FilePausedToBeSentCardProps = {
   onRequeued: (filename: string) => unknown
 }
 const FilePausedToBeSentCard: Component<FilePausedToBeSentCardProps> = (props) => {
+  const [peerId] = peerIdSignal;
+
   return (
     <>
       <div class="divider flex-1">Incomplete</div>
@@ -17,19 +21,26 @@ const FilePausedToBeSentCard: Component<FilePausedToBeSentCardProps> = (props) =
           <div class="card flex-1">
             <div class="card-body flex-1 flex flex-row items-center p-1">
               <li id={file.file.name} class="flex flex-row items-center flex-1">
-                <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.file.name}</h2>
+                <div class="flex-1 flex flex-row">
+                  <h2 class="flex-1 font-bold">{file.file.name}</h2>
+                  <h2>{formatBytesHumanReadable(file.file.size)}</h2>
+                </div>
+
                 <span
                   class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent"
                   onclick={() => props.onDelete(file.file.name)}
                 >
                   <TrashSvg />
                 </span>
+
+                <Show when={peerId() !== null}>
                 <span
                   class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent"
                   onclick={() => props.onRequeued(file.file.name)}
                 >
                   <ReloadSvg />
                 </span>
+                </Show>
               </li>
             </div>
           </div>

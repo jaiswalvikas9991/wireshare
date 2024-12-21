@@ -1,7 +1,6 @@
 import { filesPausedToBeReceivedSignal, filesPausedToBeSentSignal, filesQueuedToBeSentSignal, receivedBytesSignal, receivedFilesSignal, receivingFileInfoSignal, sendingFileInfoSignal, sentBytesSignal, sentFilesSignal } from "$src/stores/files";
 import { Component, Show, createSignal } from "solid-js";
 import { globalState } from "$src/GlobalState";
-import { panic } from "$src/lib/utils/Error";
 import SendingCard from "./SendingCard";
 import FilesQueuedToBeSentCards from "./FilesQueuedToBeSentCards";
 import SentFileCard from "./SentFileCard";
@@ -10,6 +9,7 @@ import ReceivingFileInfoCard from "./ReceivingFileInfoCard";
 import ReceivedFilesCard from "./ReceivedFilesCard";
 import FilePausedToBeReceivedCard from "./FilePausedToBeReceivedCard";
 import { triggerFileSent } from "$src/Common";
+import { invariantViolation } from "$src/lib/utils/Error";
 
 const NotificationCard: Component = () => {
   const [activeTab, setActiveTab] = createSignal<number>(0);
@@ -38,7 +38,9 @@ const NotificationCard: Component = () => {
 
 
   const onSendingFilePause = () => {
-    if (globalState.machine === null) return panic();
+    if (globalState.machine === null) {
+      return invariantViolation('onSendingFilePause cannot be called when machine is null');
+    } 
     globalState.machine.pauseSendingFile();
   };
 

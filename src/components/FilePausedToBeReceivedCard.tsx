@@ -1,6 +1,7 @@
 import { PausedToBeReceivedFile } from "$src/lib/models/types";
 import { Component, For } from "solid-js";
 import TrashSvg from "./TrashSvg";
+import { formatBytesHumanReadable } from "$src/Common";
 
 type FilePausedToBeReceivedCardProps = {
   files: PausedToBeReceivedFile[],
@@ -16,7 +17,10 @@ const FilePausedToBeReceivedCard: Component<FilePausedToBeReceivedCardProps> = (
             <div class="card-body flex-1 flex flex-row items-center p-1">
               <li id={file.name} class="flex flex-row items-center flex-1">
                 <div class="flex flex-col flex-1 items-start">
-                  <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.name}</h2>
+                  <div class="flex flex-row w-full">
+                    <h2 class="flex-1 font-bold">{file.name}</h2>
+                    <h2>{formatBytesHumanReadable(file.alreadyReceived)}/{formatBytesHumanReadable(file.size)}</h2>
+                  </div>
                   <progress
                     class="progress progress-primary w-full bg-base-300"
                     value={100 * (file.alreadyReceived / file.size)}

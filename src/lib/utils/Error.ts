@@ -1,5 +1,9 @@
-const flowError = () => {
-  throw new Error("This path should be prohibited");
+export const flowError = (why: string) => {
+  throw new Error(`This path should be prohibited ${why}`);
+};
+
+export const invariantViolation = (why: string) => {
+  throw new Error(`This condition is not expected to fail ${why}`);
 };
 
 /**
@@ -8,5 +12,3 @@ const flowError = () => {
 const panic = (msg: string = "Something went wrong, Refresh and try again") => {
   throw new Error(msg);
 };
-
-export { flowError, panic };

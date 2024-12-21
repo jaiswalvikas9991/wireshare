@@ -1,14 +1,18 @@
 import { globalState } from "./GlobalState";
 import { States } from "./lib/impls/Machine";
-import { panic } from "./lib/utils/Error";
+import { flowError } from "./lib/utils/Error";
 import { filesQueuedToBeSentSignal, sendingFileInfoSignal } from "./stores/files";
 
 const triggerNextFileSent = () => {
-  if (!globalState.machine) return panic();
+  if (!globalState.machine) {
+    return flowError('Global machine cannot be undefined if we are sending files');
+  } 
   const [toBeSentFiles, _stbs] = filesQueuedToBeSentSignal;
 
   const toBeQueued = toBeSentFiles().at(0);
-  if (!toBeQueued) return panic();
+  if (!toBeQueued) {
+    return flowError('To be send file cannot be empty if we have triggered a next file sent');
+  } 
 
   globalState.machine.sendFile(toBeQueued.file);
 };
@@ -16,7 +20,7 @@ const triggerNextFileSent = () => {
 
 export const triggerFileSent = () => {
   if(globalState.machine === null) return;
-  if(globalState.machine.state() !== States.CONNECTED) return;
+  if(globalState.machine.state() !== States.CONNECTED_TO_PEER) return;
   // This means something need to be queued
   const [toBeSentFiles] = filesQueuedToBeSentSignal;
   const [sendingFileInfo] = sendingFileInfoSignal;
@@ -49,3 +53,11 @@ export const copyTextToClipboard = async (text: string) => {
   return await navigator.clipboard.writeText(text);
 };
 
+
+export const formatBytesHumanReadable = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    const value = bytes / Math.pow(1024, i);
+    return `${value.toFixed(2)} ${sizes[i]}`;
+}

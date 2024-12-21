@@ -18,7 +18,7 @@ const FilePausedToBeReceivedCard: Component<FilePausedToBeReceivedCardProps> = (
               <li id={file.name} class="flex flex-row items-center flex-1">
                 <div class="flex flex-col flex-1 items-start">
                   <div class="flex flex-row w-full">
-                    <h2 class="flex-1 font-bold">{file.name}</h2>
+                    <h2 class="flex-1 font-semibold break-all">{file.name}</h2>
                     <h2>{formatBytesHumanReadable(file.alreadyReceived)}/{formatBytesHumanReadable(file.size)}</h2>
                   </div>
                   <progress

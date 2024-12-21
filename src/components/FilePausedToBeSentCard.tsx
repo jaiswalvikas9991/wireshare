@@ -22,7 +22,7 @@ const FilePausedToBeSentCard: Component<FilePausedToBeSentCardProps> = (props) =
             <div class="card-body flex-1 flex flex-row items-center p-1">
               <li id={file.file.name} class="flex flex-row items-center flex-1">
                 <div class="flex-1 flex flex-row">
-                  <h2 class="flex-1 font-bold">{file.file.name}</h2>
+                  <h2 class="flex-1 font-semibold break-all">{file.file.name}</h2>
                   <h2>{formatBytesHumanReadable(file.file.size)}</h2>
                 </div>
 

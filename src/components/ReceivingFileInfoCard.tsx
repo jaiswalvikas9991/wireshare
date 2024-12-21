@@ -16,7 +16,7 @@ const ReceivingFileInfoCard: Component<ReceivingFileInfoCardProps> = (props) => 
       <li id={props.receivingFileInfo.name} class="flex flex-row items-center flex-1">
         <div class="flex flex-col flex-1 items-start">
           <div class="flex flex-row w-full">
-            <h2 class="flex-1 font-bold">{props.receivingFileInfo.name}</h2>
+            <h2 class="flex-1 font-semibold break-all">{props.receivingFileInfo.name}</h2>
             <h2>{formatBytesHumanReadable(props.receivedBytes)}/{formatBytesHumanReadable(props.receivingFileInfo.size)}</h2>
           </div>
 

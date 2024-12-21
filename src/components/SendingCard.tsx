@@ -17,7 +17,7 @@ const SendingCard: Component<SendingCardProps> = (props) => {
           <li id={props.sendingFileInfo.file.name} class="flex flex-row items-center flex-1">
             <div class="flex flex-col flex-1 items-start">
               <div class="flex flex-row w-full">
-                <h2 class="flex-1 font-bold w-full">{props.sendingFileInfo.file.name}</h2>
+                <h2 class="flex-1 break-all font-semibold w-full">{props.sendingFileInfo.file.name}</h2>
                 <h2>{formatBytesHumanReadable(props.sentBytes)}/{formatBytesHumanReadable(props.sendingFileInfo.file.size)}</h2>
               </div>
 

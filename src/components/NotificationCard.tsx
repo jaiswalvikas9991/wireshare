@@ -170,7 +170,6 @@ const NotificationCard: Component = () => {
             <Show when={filesPausedToBeReceived().length > 0}>
               <FilePausedToBeReceivedCard files={filesPausedToBeReceived()} onDelete={onFilesPausedToBeReceivedDelete} />
             </Show>
-
           </ul>
         </Show>
       </Show>

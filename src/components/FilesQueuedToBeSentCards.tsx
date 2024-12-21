@@ -28,7 +28,7 @@ const FilesQueuedToBeSentCards: Component<FilesQueuedToBeSentCardsProps> = (prop
           <div class="card flex-1">
             <div class="card-body flex-1 flex flex-row items-center p-1">
               <li id={file.file.name} class="flex flex-row items-center flex-1">
-                <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.file.name}</h2>
+                <h2 class="flex-1 font-semibold break-all">{file.file.name}</h2>
                 <span
                   class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent"
                   onclick={_e => props.onDelete(file.file.name)}

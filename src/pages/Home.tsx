@@ -54,6 +54,11 @@ const makeLocalDb = async () => {
 };
 
 const UserClipboardCard = (userId: string) => {
+  const onUserIdCopied = () => {
+    copyTextToClipboard(userId)
+    toastInfo('userId copied');
+  };
+
   return (
     <div
       class="shadow-md bg-base-100 rounded-box flex flex-row items-center w-60 card break-all"
@@ -62,7 +67,7 @@ const UserClipboardCard = (userId: string) => {
         <p class="ml-4">{userId}</p>
         <span
           class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
-          onclick={() => copyTextToClipboard(userId)}
+          onclick={onUserIdCopied}
         >
           <ClipboardSvg />
         </span>
@@ -74,12 +79,16 @@ const UserClipboardCard = (userId: string) => {
 const onDisconnectPeer = () => {
   if (!globalState.machine) {
     return invariantViolation('onDisconnectPeer cannot be called when machine is null');
-  } 
+  }
 
   globalState.machine.disconnect();
 };
 
 const PeerClipboardCard = (peerId: string) => {
+  const onPeerIdCopied = () => {
+    copyTextToClipboard(peerId)
+    toastInfo('peerId copied');
+  };
   return (
     <div
       class="shadow-md rounded-box flex flex-row items-center w-60 card break-all"
@@ -95,7 +104,7 @@ const PeerClipboardCard = (peerId: string) => {
 
         <span
           class="btn btn-circle btn-outline btn-success cursor-pointer border-transparent p-0"
-          onclick={() => copyTextToClipboard(peerId)}
+          onclick={onPeerIdCopied}
         >
           <ClipboardSvg />
         </span>
@@ -112,7 +121,7 @@ const WhenHaveUserIdPart = (userId: string) => {
 
   onMount(() => {
     const value = localStorage.getItem(SHOW_SOFTWARE_INFO_KEY);
-    if(value !== 'true') {
+    if (value !== 'true') {
       setShowSoftwareInfo(true);
     }
     localStorage.setItem(SHOW_SOFTWARE_INFO_KEY, 'true');
@@ -162,7 +171,7 @@ const WhenHaveUserIdPart = (userId: string) => {
   const handleConnect = (peerId: string) => {
     if (!globalState.machine) {
       return invariantViolation('handleConnect cannot be called when machine is null');
-    } 
+    }
     loadingSignal[1](true);
     globalState.machine.connect(peerId);
   };
@@ -235,7 +244,7 @@ const WhenHaveUserIdPart = (userId: string) => {
         </div>
       </div>
 
-      <SoftwareInfo show={showSoftwareInfo()} onclose={onCloseSoftwareInfo}/>
+      <SoftwareInfo show={showSoftwareInfo()} onclose={onCloseSoftwareInfo} />
     </>
   );
 };
@@ -254,7 +263,7 @@ const Home: Component = () => {
     try {
       await makeLocalDb();
     }
-    catch(e) {
+    catch (e) {
       const errorMsg = 'Failed initialize local db connection. Refresh and try again';
       console.error(errorMsg, e);
       setErrroMsg(errorMsg);

@@ -15,7 +15,7 @@ const SentFileCard: Component<SentFileCardProps> = (props) => {
           <div class="card flex-1">
             <div class="card-body flex-1 flex flex-row items-center p-1">
               <li id={file.filename} class="flex flex-row items-center flex-1">
-                <h2 class="flex-1 text-ellipsis break-all cursor-pointer">{file.filename}</h2>
+                <h2 class="flex-1 font-semibold break-all">{file.filename}</h2>
                 <span
                   class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent"
                   onclick={() => props.onDelete(file.filename)}

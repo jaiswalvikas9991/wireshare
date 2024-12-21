@@ -16,7 +16,7 @@ const ReceivedFilesCard: Component<ReceivedFilesCardProps> = (props) => {
         {(file, _idx) =>
           <li id={file.filename} class="card flex-1">
             <div class="card-body flex-1 flex flex-row items-center p-1">
-              <h2 class="text-ellipsis break-all cursor-pointer flex-1">{file.filename}</h2>
+              <h2 class="text-ellipsis break-all font-semibold flex-1">{file.filename}</h2>
               <span
                 class="btn btn-circle btn-outline btn-error cursor-pointer border-transparent"
                 onclick={() => props.onDelete(file.filename)}

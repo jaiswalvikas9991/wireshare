@@ -6,7 +6,7 @@ class WebSocketSignallingAdaptor implements SignallingPort {
     pingTimeout: number | null = null;
 
     constructor() {
-        this.inner = new WebSocket(`${WS_URL}/`);
+        this.inner = new WebSocket(`${WS_URL}`);
     }
 
     private heartbeat = () => {
